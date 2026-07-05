@@ -26,6 +26,7 @@ experiments/**
 datasets/*
 !datasets/README.md
 !datasets/__init__.py
+!datasets/*.py
 
 # Local editor files
 .idea/
