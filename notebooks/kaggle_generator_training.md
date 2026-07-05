@@ -32,11 +32,11 @@ print("Torch version:", torch.__version__)
 
 ## 4. Add Required Input Files
 
-You need these files available inside the Kaggle working directory:
+You need these files available to Kaggle:
 
 ```text
-datasets/archive.zip
 experiments/suspicious_classifier_trained/suspicious_classifier.pt
+CIFAR-100 data as either archive.zip OR an extracted folder containing train/test/meta
 ```
 
 Recommended Kaggle method:
@@ -52,16 +52,26 @@ Example:
 from pathlib import Path
 import shutil
 
-Path("datasets").mkdir(exist_ok=True)
 Path("experiments/suspicious_classifier_trained").mkdir(parents=True, exist_ok=True)
 
-# Change these paths to match your Kaggle input dataset names.
-shutil.copy("/kaggle/input/cifar100-archive/archive.zip", "datasets/archive.zip")
+# Change this path to match your Kaggle input model dataset name.
 shutil.copy(
     "/kaggle/input/suspicious-classifier/suspicious_classifier.pt",
     "experiments/suspicious_classifier_trained/suspicious_classifier.pt",
 )
 ```
+
+If Kaggle extracts CIFAR-100, do not re-zip it. Find the extracted folder:
+
+```python
+!find /kaggle/input -name train
+!find /kaggle/input -name test
+!find /kaggle/input -name meta
+```
+
+Use the parent folder that contains `train`, `test`, and `meta` as
+`--zip-path`. The argument name is historical; it now accepts a zip file or a
+folder.
 
 ## 5. Smoke Test Generator Training
 
@@ -70,7 +80,7 @@ backpropagation.
 
 ```python
 !python -m scripts.train_spectral_generator \
-  --zip-path datasets/archive.zip \
+  --zip-path /kaggle/input/YOUR_CIFAR100_FOLDER \
   --classifier-checkpoint experiments/suspicious_classifier_trained/suspicious_classifier.pt \
   --output-dir experiments/spectral_generator_smoke_test \
   --epochs 1 \
@@ -98,7 +108,7 @@ After the smoke test works, run:
 
 ```python
 !python -m scripts.train_spectral_generator \
-  --zip-path datasets/archive.zip \
+  --zip-path /kaggle/input/YOUR_CIFAR100_FOLDER \
   --classifier-checkpoint experiments/suspicious_classifier_trained/suspicious_classifier.pt \
   --output-dir experiments/spectral_generator_cifar100 \
   --epochs 20 \

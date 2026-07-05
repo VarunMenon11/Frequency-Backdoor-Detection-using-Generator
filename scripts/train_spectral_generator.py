@@ -33,7 +33,12 @@ from poisoning.frequency_trigger import FrequencyTriggerConfig, apply_frequency_
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--zip-path", type=Path, default=Path("datasets/archive.zip"))
+    parser.add_argument(
+        "--zip-path",
+        type=Path,
+        default=Path("datasets/archive.zip"),
+        help="Path to CIFAR-100 zip archive or extracted folder containing train/test/meta.",
+    )
     parser.add_argument(
         "--classifier-checkpoint",
         type=Path,
