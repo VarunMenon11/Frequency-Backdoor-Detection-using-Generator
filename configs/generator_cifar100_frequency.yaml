@@ -1,0 +1,40 @@
+project:
+  name: adaptive_spectral_correction
+  seed: 42
+
+dataset:
+  name: cifar100
+  archive_path: datasets/archive.zip
+  num_classes: 100
+
+suspicious_classifier:
+  checkpoint_path: experiments/suspicious_classifier_trained/suspicious_classifier.pt
+
+poisoning:
+  target_label: 0
+  trigger:
+    type: sinusoidal_frequency
+    strength: 0.08
+    horizontal_frequency: 6
+    vertical_frequency: 6
+
+generator:
+  architecture: SpectralCorrectionGenerator
+  input_channels: 9
+  output_channels: 3
+
+losses:
+  classification_weight: 1.0
+  reconstruction_weight: 4.0
+  sparsity_weight: 0.02
+  smoothness_weight: 0.01
+
+training:
+  batch_size: 128
+  num_workers: 2
+  epochs: 20
+  learning_rate: 0.001
+  weight_decay: 0.00001
+
+paths:
+  output_dir: experiments/spectral_generator_cifar100

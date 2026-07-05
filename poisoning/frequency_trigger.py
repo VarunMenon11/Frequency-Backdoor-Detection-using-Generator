@@ -65,17 +65,30 @@ def apply_frequency_trigger(
     image: torch.Tensor,
     config: FrequencyTriggerConfig,
 ) -> torch.Tensor:
-    """Apply the frequency trigger to one image tensor.
+    """Apply the frequency trigger to one image or image batch.
 
     Args:
-        image: Clean image tensor with shape (3, H, W), range [0, 1].
+        image: Clean image tensor with shape (3, H, W) or (B, 3, H, W), range [0, 1].
         config: Trigger configuration.
 
     Returns:
-        Triggered image tensor with shape (3, H, W), clamped to [0, 1].
+        Triggered image tensor with the same shape, clamped to [0, 1].
     """
 
-    if image.ndim != 3 or image.shape[0] != 3:
+    if image.ndim == 3:
+        return _apply_frequency_trigger_single(image, config)
+    if image.ndim == 4:
+        return _apply_frequency_trigger_batch(image, config)
+    raise ValueError(
+        f"Expected image shape (3, H, W) or (B, 3, H, W), got {tuple(image.shape)}"
+    )
+
+
+def _apply_frequency_trigger_single(
+    image: torch.Tensor,
+    config: FrequencyTriggerConfig,
+) -> torch.Tensor:
+    if image.shape[0] != 3:
         raise ValueError(f"Expected image shape (3, H, W), got {tuple(image.shape)}")
 
     _, height, width = image.shape
@@ -86,4 +99,22 @@ def apply_frequency_trigger(
         device=image.device,
     )
     triggered = image + config.strength * pattern
+    return triggered.clamp(0.0, 1.0)
+
+
+def _apply_frequency_trigger_batch(
+    images: torch.Tensor,
+    config: FrequencyTriggerConfig,
+) -> torch.Tensor:
+    if images.shape[1] != 3:
+        raise ValueError(f"Expected image shape (B, 3, H, W), got {tuple(images.shape)}")
+
+    _, _, height, width = images.shape
+    pattern = build_frequency_pattern(
+        height,
+        width,
+        config,
+        device=images.device,
+    ).unsqueeze(0)
+    triggered = images + config.strength * pattern
     return triggered.clamp(0.0, 1.0)
