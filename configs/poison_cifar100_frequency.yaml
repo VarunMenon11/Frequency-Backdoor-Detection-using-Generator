@@ -1,0 +1,27 @@
+project:
+  name: adaptive_spectral_correction
+  seed: 42
+
+dataset:
+  name: cifar100
+  archive_path: datasets/archive.zip
+  num_classes: 100
+
+poisoning:
+  enabled: true
+  poison_ratio: 0.12
+  target_label: 0
+  trigger:
+    type: sinusoidal_frequency
+    strength: 0.08
+    horizontal_frequency: 6
+    vertical_frequency: 6
+
+training:
+  batch_size: 128
+  num_workers: 2
+
+paths:
+  checkpoints_dir: checkpoints
+  experiments_dir: experiments
+  outputs_dir: outputs

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Data and large artifacts
+data/
+checkpoints/*.pt
+checkpoints/*.pth
+checkpoints/*.ckpt
+outputs/**
+!outputs/README.md
+!outputs/.gitkeep
+experiments/**
+!experiments/README.md
+!experiments/.gitkeep
+
+# Large local datasets (keep them out of GitHub)
+datasets/*
+!datasets/README.md
+!datasets/__init__.py
+
+# Local editor files
+.idea/
+.vscode/

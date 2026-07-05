@@ -1,0 +1,25 @@
+project:
+  name: adaptive_spectral_correction
+  seed: 42
+
+dataset:
+  name: cifar100
+  data_dir: data
+  num_classes: 100
+
+poisoning:
+  enabled: false
+  poison_ratio: 0.0
+  target_label: 0
+  trigger_strength: 0.0
+
+training:
+  batch_size: 128
+  num_workers: 2
+  epochs: 0
+  learning_rate: 0.001
+
+paths:
+  checkpoints_dir: checkpoints
+  experiments_dir: experiments
+  outputs_dir: outputs
