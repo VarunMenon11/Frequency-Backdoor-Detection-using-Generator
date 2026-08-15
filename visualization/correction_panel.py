@@ -42,7 +42,10 @@ def save_correction_panel(
         else:
             raise ValueError(f"Unsupported panel mode: {mode}")
 
-        image = image.resize((cell_size, cell_size), Image.Resampling.NEAREST)
+        # Smooth enlargement keeps higher-resolution dataset examples readable
+        # in paper figures while leaving the model input unchanged.
+        resampling = Image.Resampling.BICUBIC if mode == "rgb" else Image.Resampling.BILINEAR
+        image = image.resize((cell_size, cell_size), resampling)
         canvas.paste(image, (x, y))
         for line_index, line in enumerate(_wrap(label, 24)[:2]):
             draw.text((x + 4, y + cell_size + 4 + 16 * line_index), line, fill=(0, 0, 0))

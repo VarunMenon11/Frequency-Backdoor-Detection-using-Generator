@@ -767,6 +767,10 @@ def save_final_panels(
         clean_batch = clean_image.unsqueeze(0).to(device)
         triggered_batch = apply_frequency_trigger(clean_batch, trigger_config)
         corrected_batch, correction_map = correct_batch(clean_batch, triggered_batch, generator)
+        clean_amp = amplitude_spectrum(clean_image)
+        triggered_amp = amplitude_spectrum(triggered_batch.squeeze(0).cpu())
+        corrected_amp = amplitude_spectrum(corrected_batch.squeeze(0).cpu())
+        amplitude_difference = (triggered_amp - clean_amp).abs()
         true_name = label_names[clean_label]
         record = {
             "index": index,
@@ -788,8 +792,9 @@ def save_final_panels(
                 (f"repair trig:{record['repaired_triggered']}", triggered_batch.squeeze(0).cpu(), "rgb"),
                 (f"repair corr:{record['repaired_corrected']}", corrected_batch.squeeze(0).cpu(), "rgb"),
                 ("correction map", normalize_minmax(correction_map.squeeze(0).cpu()), "gray"),
-                ("trigger amp", normalize_minmax(amplitude_spectrum(triggered_batch.squeeze(0).cpu())), "gray"),
-                ("corrected amp", normalize_minmax(amplitude_spectrum(corrected_batch.squeeze(0).cpu())), "gray"),
+                ("trigger amp", normalize_minmax(triggered_amp), "gray"),
+                ("corrected amp", normalize_minmax(corrected_amp), "gray"),
+                ("amplitude diff", normalize_minmax(amplitude_difference), "gray"),
                 ("image diff x8", ((corrected_batch.squeeze(0).cpu() - clean_image).abs() * 8.0).clamp(0, 1), "rgb"),
                 ("trigger diff x8", ((triggered_batch.squeeze(0).cpu() - clean_image).abs() * 8.0).clamp(0, 1), "rgb"),
             ],
