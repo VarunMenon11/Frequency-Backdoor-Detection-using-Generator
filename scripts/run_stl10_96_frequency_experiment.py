@@ -88,8 +88,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--poison-ratio", type=float, default=0.12)
     parser.add_argument("--target-label", type=int, default=0)
     parser.add_argument("--strength", type=float, default=0.08)
+    parser.add_argument(
+        "--trigger-kind",
+        choices=["cosine", "sine", "checkerboard", "dual_frequency"],
+        default="cosine",
+    )
     parser.add_argument("--horizontal-frequency", type=int, default=18)
     parser.add_argument("--vertical-frequency", type=int, default=18)
+    parser.add_argument("--secondary-horizontal-frequency", type=int, default=30)
+    parser.add_argument("--secondary-vertical-frequency", type=int, default=6)
     parser.add_argument("--classification-weight", type=float, default=1.0)
     parser.add_argument("--reconstruction-weight", type=float, default=4.0)
     parser.add_argument("--sparsity-weight", type=float, default=0.02)
@@ -113,6 +120,9 @@ def main() -> None:
         horizontal_frequency=args.horizontal_frequency,
         vertical_frequency=args.vertical_frequency,
         strength=args.strength,
+        trigger_kind=args.trigger_kind,
+        secondary_horizontal_frequency=args.secondary_horizontal_frequency,
+        secondary_vertical_frequency=args.secondary_vertical_frequency,
     )
     loss_weights = GeneratorLossWeights(
         classification=args.classification_weight,
@@ -145,7 +155,12 @@ def main() -> None:
     print("Triggered ASR samples:", len(triggered_test))
     print("Target:", args.target_label, target_name)
     print("Poisoned train samples:", poisoned_train.num_poisoned, "/", len(poisoned_train))
-    print("Trigger: alpha", args.strength, "fx", args.horizontal_frequency, "fy", args.vertical_frequency)
+    print(
+        "Trigger:", args.trigger_kind,
+        "alpha", args.strength,
+        "fx", args.horizontal_frequency,
+        "fy", args.vertical_frequency,
+    )
 
     suspicious = SmallCIFARClassifier(num_classes=num_classes).to(device)
     classifier_summary = train_suspicious_classifier(
@@ -711,13 +726,15 @@ def final_evaluation(
     return {
         "dataset": {"name": "STL-10", "image_shape": [3, 96, 96], "classes": label_names},
         "trigger": {
-            "type": "sinusoidal_frequency",
+            "type": args.trigger_kind,
             "target_label": args.target_label,
             "target_label_name": label_names[args.target_label],
             "poison_ratio": args.poison_ratio,
             "strength_alpha": args.strength,
             "horizontal_frequency_fx": args.horizontal_frequency,
             "vertical_frequency_fy": args.vertical_frequency,
+            "secondary_horizontal_frequency": args.secondary_horizontal_frequency,
+            "secondary_vertical_frequency": args.secondary_vertical_frequency,
         },
         "metrics": {
             "suspicious_classifier": {
@@ -848,7 +865,7 @@ def render_markdown(summary: dict) -> str:
 - Resolution: `96 x 96`.
 - Target class: `{trigger['target_label_name']}` (`{trigger['target_label']}`).
 - Poison ratio: `{trigger['poison_ratio']}`.
-- Trigger: sinusoidal frequency trigger.
+- Trigger: `{trigger['type']}` frequency trigger.
 - Frequency: `fx={trigger['horizontal_frequency_fx']}`, `fy={trigger['vertical_frequency_fy']}`.
 - Strength: `alpha={trigger['strength_alpha']}`.
 
