@@ -90,13 +90,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strength", type=float, default=0.08)
     parser.add_argument(
         "--trigger-kind",
-        choices=["cosine", "sine", "checkerboard", "dual_frequency"],
+        choices=["cosine", "sine", "checkerboard", "dual_frequency", "localized_cosine"],
         default="cosine",
     )
     parser.add_argument("--horizontal-frequency", type=int, default=18)
     parser.add_argument("--vertical-frequency", type=int, default=18)
     parser.add_argument("--secondary-horizontal-frequency", type=int, default=30)
     parser.add_argument("--secondary-vertical-frequency", type=int, default=6)
+    parser.add_argument("--window-center-x", type=float, default=0.65)
+    parser.add_argument("--window-center-y", type=float, default=0.50)
+    parser.add_argument("--window-sigma", type=float, default=0.18)
     parser.add_argument("--classification-weight", type=float, default=1.0)
     parser.add_argument("--reconstruction-weight", type=float, default=4.0)
     parser.add_argument("--sparsity-weight", type=float, default=0.02)
@@ -123,6 +126,9 @@ def main() -> None:
         trigger_kind=args.trigger_kind,
         secondary_horizontal_frequency=args.secondary_horizontal_frequency,
         secondary_vertical_frequency=args.secondary_vertical_frequency,
+        window_center_x=args.window_center_x,
+        window_center_y=args.window_center_y,
+        window_sigma=args.window_sigma,
     )
     loss_weights = GeneratorLossWeights(
         classification=args.classification_weight,
@@ -735,6 +741,9 @@ def final_evaluation(
             "vertical_frequency_fy": args.vertical_frequency,
             "secondary_horizontal_frequency": args.secondary_horizontal_frequency,
             "secondary_vertical_frequency": args.secondary_vertical_frequency,
+            "window_center_x": args.window_center_x,
+            "window_center_y": args.window_center_y,
+            "window_sigma": args.window_sigma,
         },
         "metrics": {
             "suspicious_classifier": {

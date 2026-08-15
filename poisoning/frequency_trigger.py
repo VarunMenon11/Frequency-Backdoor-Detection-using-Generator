@@ -31,6 +31,9 @@ class FrequencyTriggerConfig:
     trigger_kind: str = "cosine"
     secondary_horizontal_frequency: int = 10
     secondary_vertical_frequency: int = 2
+    window_center_x: float = 0.65
+    window_center_y: float = 0.50
+    window_sigma: float = 0.18
     channel_weights: tuple[float, float, float] = (1.0, 1.0, 1.0)
 
 
@@ -67,10 +70,25 @@ def build_frequency_pattern(
         )
         base_pattern = 0.5 * (torch.cos(phase) + torch.cos(secondary_phase))
         base_pattern = base_pattern / base_pattern.abs().amax().clamp_min(1e-8)
+    elif config.trigger_kind == "localized_cosine":
+        center_x = config.window_center_x * max(width - 1, 1)
+        center_y = config.window_center_y * max(height - 1, 1)
+        sigma_x = config.window_sigma * max(width, 1)
+        sigma_y = config.window_sigma * max(height, 1)
+        window = torch.exp(
+            -0.5
+            * (
+                ((x - center_x) / sigma_x) ** 2
+                + ((y - center_y) / sigma_y) ** 2
+            )
+        )
+        base_pattern = window * torch.cos(phase)
+        base_pattern = base_pattern / base_pattern.abs().amax().clamp_min(1e-8)
     else:
         raise ValueError(
             "Unsupported trigger_kind: "
-            f"{config.trigger_kind}. Use cosine, sine, checkerboard, or dual_frequency."
+            f"{config.trigger_kind}. Use cosine, sine, checkerboard, "
+            "dual_frequency, or localized_cosine."
         )
     channel_weights = torch.tensor(
         config.channel_weights,
