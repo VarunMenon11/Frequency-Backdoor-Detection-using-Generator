@@ -34,6 +34,8 @@ class FrequencyTriggerConfig:
     window_center_x: float = 0.65
     window_center_y: float = 0.50
     window_sigma: float = 0.18
+    fiba_mask_radius: float = 0.10
+    reference_image: torch.Tensor | None = None
     channel_weights: tuple[float, float, float] = (1.0, 1.0, 1.0)
 
 
@@ -129,6 +131,9 @@ def _apply_frequency_trigger_single(
     if image.shape[0] != 3:
         raise ValueError(f"Expected image shape (3, H, W), got {tuple(image.shape)}")
 
+    if config.trigger_kind == "fiba_amplitude":
+        return _apply_fiba_amplitude_trigger_single(image, config)
+
     _, height, width = image.shape
     pattern = build_frequency_pattern(
         height,
@@ -147,6 +152,9 @@ def _apply_frequency_trigger_batch(
     if images.shape[1] != 3:
         raise ValueError(f"Expected image shape (B, 3, H, W), got {tuple(images.shape)}")
 
+    if config.trigger_kind == "fiba_amplitude":
+        return _apply_fiba_amplitude_trigger_batch(images, config)
+
     _, _, height, width = images.shape
     pattern = build_frequency_pattern(
         height,
@@ -156,3 +164,55 @@ def _apply_frequency_trigger_batch(
     ).unsqueeze(0)
     triggered = images + config.strength * pattern
     return triggered.clamp(0.0, 1.0)
+
+
+def _apply_fiba_amplitude_trigger_single(
+    image: torch.Tensor,
+    config: FrequencyTriggerConfig,
+) -> torch.Tensor:
+    """Inject a fixed reference-image amplitude into a centered FFT mask.
+
+    This follows the published FIBA idea: blend trigger and clean amplitudes
+    inside a selected frequency region and reconstruct with the clean phase.
+    """
+
+    if config.reference_image is None:
+        raise ValueError("fiba_amplitude requires config.reference_image")
+    reference = config.reference_image.to(device=image.device, dtype=image.dtype)
+    if reference.shape != image.shape:
+        raise ValueError(
+            "FIBA reference image must match the input shape, got "
+            f"{tuple(reference.shape)} and {tuple(image.shape)}"
+        )
+
+    _, height, width = image.shape
+    clean_fft = torch.fft.fftshift(torch.fft.fft2(image, dim=(-2, -1)), dim=(-2, -1))
+    trigger_fft = torch.fft.fftshift(torch.fft.fft2(reference, dim=(-2, -1)), dim=(-2, -1))
+    clean_amplitude = clean_fft.abs()
+    trigger_amplitude = trigger_fft.abs()
+    phase = torch.angle(clean_fft)
+
+    y = torch.arange(height, device=image.device).view(height, 1)
+    x = torch.arange(width, device=image.device).view(1, width)
+    cy, cx = (height - 1) / 2.0, (width - 1) / 2.0
+    radius_y = config.fiba_mask_radius * height
+    radius_x = config.fiba_mask_radius * width
+    mask = (((y - cy) / radius_y) ** 2 + ((x - cx) / radius_x) ** 2 <= 1.0)
+    mask = mask.unsqueeze(0)
+
+    blended_amplitude = (1.0 - config.strength) * clean_amplitude + config.strength * trigger_amplitude
+    poisoned_amplitude = torch.where(mask, blended_amplitude, clean_amplitude)
+    poisoned_fft = torch.fft.ifftshift(
+        poisoned_amplitude * torch.exp(1j * phase), dim=(-2, -1)
+    )
+    return torch.fft.ifft2(poisoned_fft, dim=(-2, -1)).real.clamp(0.0, 1.0)
+
+
+def _apply_fiba_amplitude_trigger_batch(
+    images: torch.Tensor,
+    config: FrequencyTriggerConfig,
+) -> torch.Tensor:
+    return torch.stack(
+        [_apply_fiba_amplitude_trigger_single(image, config) for image in images],
+        dim=0,
+    )

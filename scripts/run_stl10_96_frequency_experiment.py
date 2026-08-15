@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 import random
 from time import perf_counter
@@ -90,7 +91,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strength", type=float, default=0.08)
     parser.add_argument(
         "--trigger-kind",
-        choices=["cosine", "sine", "checkerboard", "dual_frequency", "localized_cosine"],
+        choices=[
+            "cosine",
+            "sine",
+            "checkerboard",
+            "dual_frequency",
+            "localized_cosine",
+            "fiba_amplitude",
+        ],
         default="cosine",
     )
     parser.add_argument("--horizontal-frequency", type=int, default=18)
@@ -100,6 +108,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--window-center-x", type=float, default=0.65)
     parser.add_argument("--window-center-y", type=float, default=0.50)
     parser.add_argument("--window-sigma", type=float, default=0.18)
+    parser.add_argument("--fiba-mask-radius", type=float, default=0.10)
     parser.add_argument("--classification-weight", type=float, default=1.0)
     parser.add_argument("--reconstruction-weight", type=float, default=4.0)
     parser.add_argument("--sparsity-weight", type=float, default=0.02)
@@ -129,6 +138,7 @@ def main() -> None:
         window_center_x=args.window_center_x,
         window_center_y=args.window_center_y,
         window_sigma=args.window_sigma,
+        fiba_mask_radius=args.fiba_mask_radius,
     )
     loss_weights = GeneratorLossWeights(
         classification=args.classification_weight,
@@ -138,6 +148,9 @@ def main() -> None:
     )
 
     train_clean, test_clean = load_stl10(args.data_root, download=args.download)
+    if args.trigger_kind == "fiba_amplitude":
+        reference_image, _ = train_clean[0]
+        trigger_config = replace(trigger_config, reference_image=reference_image)
     label_names = list(getattr(train_clean, "classes", STL10_LABEL_NAMES))
     num_classes = len(label_names)
     target_name = label_names[args.target_label]
@@ -744,6 +757,7 @@ def final_evaluation(
             "window_center_x": args.window_center_x,
             "window_center_y": args.window_center_y,
             "window_sigma": args.window_sigma,
+            "fiba_mask_radius": args.fiba_mask_radius,
         },
         "metrics": {
             "suspicious_classifier": {
