@@ -36,11 +36,27 @@ outputs/pathmnist_fiba/
 
 ## 2. Kaggle setup
 
+Kaggle has public uploads of MedMNIST. Search Kaggle datasets for:
+
+```text
+MedMNIST: Standardized Biomedical Images
+```
+
+or:
+
+```text
+pathmnist
+```
+
+The first option is preferable because it is documented as a collection of the standardized MedMNIST datasets. After adding it with **Add Input**, inspect the files and locate `pathmnist.npz`.
+
 Create a Kaggle notebook with GPU enabled. The repository code downloads PathMNIST through the official `medmnist` package, so enable Kaggle internet for the first run.
 
 ```python
-!pip install -q -U medmnist
+!pip install -q --no-deps medmnist
 ```
+
+Using `--no-deps` prevents pip from replacing Kaggle's preinstalled PyTorch and CUDA packages. If MedMNIST is already importable, this installation cell can be skipped.
 
 Clone the updated repository:
 
@@ -56,6 +72,30 @@ Confirm the new scripts are present:
 !python -m scripts.calibrate_pathmnist_fiba --help
 ```
 
+### Option A: use the Kaggle dataset input
+
+If `pathmnist.npz` is visible under a Kaggle input folder, set `DATA_ROOT` to the parent folder containing that file:
+
+```python
+import os
+
+for root, dirs, files in os.walk("/kaggle/input"):
+    if "pathmnist.npz" in files:
+        print("PathMNIST file:", os.path.join(root, "pathmnist.npz"))
+```
+
+Example:
+
+```python
+DATA_ROOT = "/kaggle/input/standardized-biomedical-images-medmnist"
+```
+
+The project loader searches nested folders automatically. Use `download=False` when using Kaggle input data.
+
+For Option A, remove `--download` from the smoke-test, calibration, and full-run commands below. Keep `--download` only for Option B.
+
+### Option B: download through MedMNIST
+
 Use a writable location for the MedMNIST download:
 
 ```python
@@ -69,7 +109,7 @@ Run this first to verify that the package, dataset download, tensor shape, trigg
 ```python
 !python -m scripts.run_pathmnist_fiba_experiment \
   --data-root {DATA_ROOT} \
-  --download \
+    --download \
   --experiment-root experiments/pathmnist_fiba_smoke \
   --output-root outputs/pathmnist_fiba_smoke \
   --classifier-epochs 1 \

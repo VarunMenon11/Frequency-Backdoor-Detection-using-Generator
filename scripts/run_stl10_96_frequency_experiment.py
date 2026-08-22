@@ -22,7 +22,6 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-from torchvision import datasets, transforms
 
 from evaluation import evaluate_classifier
 from fft import amplitude_spectrum, normalize_minmax, shift_frequency_map
@@ -242,6 +241,8 @@ def main() -> None:
 
 
 def load_stl10(data_root: Path, *, download: bool) -> tuple[Dataset, Dataset]:
+    from torchvision import datasets, transforms
+
     root = find_stl10_root(data_root)
     transform = transforms.ToTensor()
     try:
