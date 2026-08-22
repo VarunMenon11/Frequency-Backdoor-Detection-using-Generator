@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
 from evaluation import evaluate_classifier
-from fft import amplitude_spectrum, normalize_minmax
+from fft import amplitude_spectrum, normalize_minmax, shift_frequency_map
 from generator import (
     SpectralCorrectionGenerator,
     apply_correction_map,
@@ -831,7 +831,11 @@ def save_final_panels(
                 (f"repair clean:{record['repaired_clean']}", clean_image, "rgb"),
                 (f"repair trig:{record['repaired_triggered']}", triggered_batch.squeeze(0).cpu(), "rgb"),
                 (f"repair corr:{record['repaired_corrected']}", corrected_batch.squeeze(0).cpu(), "rgb"),
-                ("correction map", normalize_minmax(correction_map.squeeze(0).cpu()), "gray"),
+                (
+                    "correction map",
+                    normalize_minmax(shift_frequency_map(correction_map.squeeze(0).cpu())),
+                    "gray",
+                ),
                 ("trigger amp", normalize_minmax(triggered_amp), "gray"),
                 ("corrected amp", normalize_minmax(corrected_amp), "gray"),
                 ("amplitude diff", normalize_minmax(amplitude_difference), "gray"),

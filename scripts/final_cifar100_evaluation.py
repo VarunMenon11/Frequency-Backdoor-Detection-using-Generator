@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 
 from datasets.cifar100_dataset import CleanCIFAR100Dataset, TriggeredCIFAR100TestDataset
 from evaluation.classification import evaluate_classifier
-from fft import amplitude_spectrum, normalize_minmax
+from fft import amplitude_spectrum, normalize_minmax, shift_frequency_map
 from generator import (
     SpectralCorrectionGenerator,
     apply_correction_map,
@@ -306,7 +306,11 @@ def save_sample_panels(
                 (f"repair clean:{repaired_clean}", clean_image, "rgb"),
                 (f"repair trig:{repaired_triggered}", triggered_batch.squeeze(0).cpu(), "rgb"),
                 (f"repair corr:{repaired_corrected}", corrected_batch.squeeze(0).cpu(), "rgb"),
-                ("correction map", normalize_minmax(correction_map.squeeze(0).cpu()), "gray"),
+                (
+                    "correction map",
+                    normalize_minmax(shift_frequency_map(correction_map.squeeze(0).cpu())),
+                    "gray",
+                ),
                 ("trigger amp", normalize_minmax(amplitude_spectrum(triggered_batch.squeeze(0).cpu())), "gray"),
                 ("corrected amp", normalize_minmax(amplitude_spectrum(corrected_batch.squeeze(0).cpu())), "gray"),
                 (

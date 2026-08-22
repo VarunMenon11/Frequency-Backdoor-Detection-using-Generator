@@ -56,6 +56,19 @@ def normalize_minmax(values: torch.Tensor) -> torch.Tensor:
     return (values - min_value) / (max_value - min_value + 1e-8)
 
 
+def shift_frequency_map(values: torch.Tensor) -> torch.Tensor:
+    """Center a real-valued frequency map for visualization.
+
+    The generator uses native, unshifted FFT ordering, while displayed spectra
+    use ``fftshift`` so zero frequency appears in the center. This helper keeps
+    correction-map displays in the same coordinate system as the spectra.
+    """
+
+    if values.ndim < 2:
+        raise ValueError(f"Expected at least two spatial dimensions, got {tuple(values.shape)}")
+    return torch.fft.fftshift(values, dim=(-2, -1))
+
+
 def log_amplitude_spectrum(image: torch.Tensor) -> torch.Tensor:
     """Compute a shifted log-amplitude spectrum for an RGB image.
 

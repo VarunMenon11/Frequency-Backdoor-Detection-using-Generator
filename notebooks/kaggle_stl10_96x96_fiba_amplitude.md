@@ -13,7 +13,7 @@ repository is an official implementation of the original FIBA code.
 - Dataset: STL-10, native `96 x 96` resolution.
 - Target: `airplane` (`0`).
 - Poison ratio: `0.12`.
-- Amplitude mixing strength: `alpha=0.15`.
+- Amplitude mixing strength: `alpha=0.50` for the calibrated final run.
 - Centered elliptical amplitude-mask radius: `0.10` of image dimensions.
 - Reference image: first labelled STL-10 training image, fixed by seed and path.
 - Classifier epochs: 30.
@@ -24,8 +24,8 @@ repository is an official implementation of the original FIBA code.
 Outputs are isolated under:
 
 ```text
-experiments/stl10_96x96_fiba_amplitude/
-outputs/stl10_96x96_fiba_amplitude/
+  experiments/stl10_96x96_fiba_amplitude_calibrated/
+  outputs/stl10_96x96_fiba_amplitude_calibrated/
 ```
 
 ## 1. Check GPU and enter the repository
@@ -85,8 +85,8 @@ STL_PATH = "/kaggle/input/YOUR_STL10_DATASET_FOLDER"
 ```python
 !python -m scripts.run_stl10_96_frequency_experiment \
   --data-root {STL_PATH} \
-  --experiment-root experiments/stl10_96x96_fiba_amplitude \
-  --output-root outputs/stl10_96x96_fiba_amplitude \
+  --experiment-root experiments/stl10_96x96_fiba_amplitude_calibrated \
+  --output-root outputs/stl10_96x96_fiba_amplitude_calibrated \
   --classifier-epochs 30 \
   --generator-epochs 30 \
   --repair-epochs 5 \
@@ -95,7 +95,7 @@ STL_PATH = "/kaggle/input/YOUR_STL10_DATASET_FOLDER"
   --poison-ratio 0.12 \
   --target-label 0 \
   --trigger-kind fiba_amplitude \
-  --strength 0.15 \
+  --strength 0.50 \
   --fiba-mask-radius 0.10 \
   --num-panels 8 \
   --seed 42 \
@@ -133,17 +133,28 @@ rather than a spatial sinusoid whose spectral effect is observed afterward.
 import json
 from pathlib import Path
 
-summary_path = Path("outputs/stl10_96x96_fiba_amplitude/final_stl10_96x96_summary.json")
+summary_path = Path("outputs/stl10_96x96_fiba_amplitude_calibrated/final_stl10_96x96_summary.json")
 summary = json.loads(summary_path.read_text())
 print(json.dumps(summary["metrics"], indent=2))
 ```
 
 ```python
 !zip -r stl10_96x96_fiba_amplitude_results.zip \
-  experiments/stl10_96x96_fiba_amplitude \
-  outputs/stl10_96x96_fiba_amplitude
+  experiments/stl10_96x96_fiba_amplitude_calibrated \
+  outputs/stl10_96x96_fiba_amplitude_calibrated
 ```
 
 The important result pattern is high suspicious ASR, low generator-corrected
 ASR, very low repaired ASR, stable clean accuracy, and a small reconstruction
 error.
+
+## 7. Important visualization fix
+
+The updated repository aligns the correction-map display with the centered
+amplitude-spectrum displays. The generator still uses the original unshifted
+FFT ordering internally; the correction map is shifted only when it is rendered
+for a figure. This does not change training, corrected images, or metrics.
+
+Use the updated repository code and regenerate the sample panels. Do not reuse
+the old preliminary panel as the final FIBA figure because its correction map
+was displayed in the unshifted layout.

@@ -5,6 +5,7 @@ from fft.spectrum import (
     log_amplitude_spectrum,
     normalize_minmax,
     phase_spectrum,
+    shift_frequency_map,
     shifted_fft,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "log_amplitude_spectrum",
     "normalize_minmax",
     "phase_spectrum",
+    "shift_frequency_map",
     "shifted_fft",
 ]

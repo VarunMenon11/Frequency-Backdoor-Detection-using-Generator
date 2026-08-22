@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 
 from datasets.cifar100_dataset import CleanCIFAR100Dataset
-from fft import amplitude_spectrum, normalize_minmax
+from fft import amplitude_spectrum, normalize_minmax, shift_frequency_map
 from generator import (
     SpectralCorrectionGenerator,
     apply_correction_map,
@@ -136,7 +136,7 @@ def main() -> None:
                         ),
                         (
                             "correction map",
-                            normalize_minmax(result["correction_map"]),
+                            normalize_minmax(shift_frequency_map(result["correction_map"])),
                             "gray",
                         ),
                         (
@@ -171,7 +171,7 @@ def main() -> None:
                 break
 
     average_correction = correction_sum / processed_for_average
-    average_correction_2d = average_correction.mean(dim=0)
+    average_correction_2d = shift_frequency_map(average_correction.mean(dim=0))
     average_map_path = save_heatmap(
         normalize_minmax(average_correction_2d),
         args.output_dir / "average_correction_map.png",

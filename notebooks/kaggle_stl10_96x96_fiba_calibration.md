@@ -96,8 +96,8 @@ attack must first be strong enough before the defense result is meaningful.
 Replace `SELECTED_ALPHA` and `SELECTED_RADIUS` with the selected values:
 
 ```python
-SELECTED_ALPHA = "0.30"
-SELECTED_RADIUS = "0.15"
+SELECTED_ALPHA = "0.50"
+SELECTED_RADIUS = "0.10"
 
 !python -m scripts.run_stl10_96_frequency_experiment \
   --data-root {STL_PATH} \
