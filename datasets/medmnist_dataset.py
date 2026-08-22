@@ -23,6 +23,8 @@ class PathMNISTDataset(Dataset):
                 "pip install -U medmnist."
             ) from error
 
+        root = Path(root).expanduser()
+        root.mkdir(parents=True, exist_ok=True)
         self.base = PathMNIST(
             split=split,
             root=str(root),
