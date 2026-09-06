@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import random
 from typing import Callable, Iterable
 
 from PIL import Image
@@ -55,6 +56,79 @@ def select_suspicious_training_rows(
         "total_training_samples": len(selected),
         "clean_training_samples": len(selected) - len(poison_rows),
         "poisoned_training_samples": len(poison_rows),
+    }
+
+
+def build_poisoned_training_rows(
+    rows: Iterable[ManifestRow],
+    *,
+    trigger_configs: dict[str, dict[str, object]],
+    target_label: int,
+    poison_ratio: float,
+    seed: int,
+) -> tuple[list[ManifestRow], dict[str, object]]:
+    """Build a fixed-size clean or poisoned set from clean training rows.
+
+    The poisoning ratio is a total budget. When multiple trigger names are
+    supplied, selected sources are divided as evenly as possible among them.
+    """
+
+    if not 0.0 <= poison_ratio <= 1.0:
+        raise ValueError("poison_ratio must be between zero and one")
+    clean_rows = [
+        dict(row) for row in rows if row["protocol_role"] == "clean_train"
+    ]
+    if not clean_rows:
+        raise ValueError("Manifest contains no clean training rows")
+    if not trigger_configs:
+        if poison_ratio != 0.0:
+            raise ValueError("A positive poison ratio requires at least one trigger")
+        return clean_rows, {
+            "total_training_samples": len(clean_rows),
+            "clean_training_samples": len(clean_rows),
+            "poisoned_training_samples": 0,
+            "poisoned_samples_by_trigger": {},
+        }
+
+    eligible = [
+        row for row in clean_rows if int(row["original_label"]) != target_label
+    ]
+    poison_count = min(round(len(clean_rows) * poison_ratio), len(eligible))
+    shuffled = eligible.copy()
+    random.Random(seed).shuffle(shuffled)
+    trigger_names = list(trigger_configs)
+    assignment = {
+        str(row["source_id"]): trigger_names[index % len(trigger_names)]
+        for index, row in enumerate(shuffled[:poison_count])
+    }
+
+    poisoned_counts = {name: 0 for name in trigger_names}
+    selected = []
+    for clean in clean_rows:
+        trigger_name = assignment.get(str(clean["source_id"]))
+        if trigger_name is None:
+            selected.append(clean)
+            continue
+        poisoned = dict(clean)
+        poisoned.update(
+            {
+                "protocol_role": "attack_poison_train",
+                "training_label": target_label,
+                "variant_name": trigger_name,
+                "variant_type": "trigger",
+                "trigger_config": trigger_configs[trigger_name],
+                "seen_during_defense_training": False,
+                "strength_status": "uncalibrated",
+            }
+        )
+        selected.append(poisoned)
+        poisoned_counts[trigger_name] += 1
+
+    return selected, {
+        "total_training_samples": len(selected),
+        "clean_training_samples": len(selected) - poison_count,
+        "poisoned_training_samples": poison_count,
+        "poisoned_samples_by_trigger": poisoned_counts,
     }
 
 

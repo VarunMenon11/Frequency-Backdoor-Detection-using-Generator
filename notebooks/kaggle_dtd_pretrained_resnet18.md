@@ -1,5 +1,12 @@
 # DTD Pretrained ResNet-18 Suspicious Classifier
 
+> **Status:** The full run documented here has been completed. It established a
+> useful pretrained clean-classification baseline, but its 10% poisoning budget
+> was divided across three weak, unmatched triggers and did not produce a strong
+> backdoor. Do not repeat this run. Continue with
+> `notebooks/kaggle_dtd_attack_calibration.md` for the clean-control and
+> single-trigger protocol.
+
 ## Purpose
 
 This is the first classifier experiment in the advanced research track. It uses
@@ -59,29 +66,44 @@ CUDA libraries and break the notebook environment.
 
 ## Verify paths and GPU
 
-Use this cell to locate the attached dataset automatically, even if Kaggle
-changes the uploaded dataset folder name:
+Use this cell to locate the dataset automatically. It supports both an attached
+Kaggle dataset below `/kaggle/input` and a copy committed inside the cloned
+repository below `/kaggle/working`:
 
 ~~~python
 from pathlib import Path
 import torch
 
-manifest_matches = list(
-    Path("/kaggle/input").rglob("asb_dtd_v1/variant_manifest.jsonl")
-)
-if len(manifest_matches) != 1:
+search_roots = [Path("/kaggle/working"), Path("/kaggle/input")]
+manifest_matches = []
+for search_root in search_roots:
+    if search_root.is_dir():
+        manifest_matches.extend(
+            search_root.rglob("asb_dtd_v1/variant_manifest.jsonl")
+        )
+
+if not manifest_matches:
     raise RuntimeError(
-        "Expected exactly one ASB-DTD manifest, found: "
-        + str(manifest_matches)
+        "Could not find asb_dtd_v1/variant_manifest.jsonl below "
+        "/kaggle/working or /kaggle/input."
     )
 
-DATA_ROOT = manifest_matches[0].parent.parent
+# Prefer the copy inside the active cloned repository if more than one exists.
+repository_name = "Frequency-Backdoor-Detection-using-Generator"
+repository_matches = [
+    path for path in manifest_matches if repository_name in path.parts
+]
+selected_manifest = (
+    repository_matches[0] if repository_matches else manifest_matches[0]
+)
+DATA_ROOT = selected_manifest.parent.parent
 
 assert (DATA_ROOT / "dtd/images").is_dir()
 assert (DATA_ROOT / "asb_dtd_v1/variant_manifest.jsonl").is_file()
 print("CUDA available:", torch.cuda.is_available())
 print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU")
 print("Dataset root:", DATA_ROOT)
+print("Manifest:", selected_manifest)
 ~~~
 
 ## Smoke test
