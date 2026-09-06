@@ -27,6 +27,13 @@ datasets/*
 !datasets/README.md
 !datasets/__init__.py
 !datasets/*.py
+Absolute_Dataset/
+
+# Advanced research track (kept separate from legacy experiments)
+Advanced_Experiments/**
+!Advanced_Experiments/README.md
+Advanced_Outputs/**
+!Advanced_Outputs/README.md
 
 # Local editor files
 .idea/

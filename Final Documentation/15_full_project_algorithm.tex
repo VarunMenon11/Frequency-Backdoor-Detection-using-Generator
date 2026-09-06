@@ -1,0 +1,352 @@
+% Compile with pdfLaTeX. Required packages: amsmath, amssymb, algorithm,
+% algpseudocode, and geometry.
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[a4paper,margin=1in]{geometry}
+
+\title{Selective Frequency-Domain Backdoor Mitigation}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Key notation}
+\noindent\fbox{\begin{minipage}{0.94\linewidth}
+\small
+\begin{itemize}
+    \item $\mathcal{D}$: clean training set; $x\in[0,1]^{C\times H\times W}$ is an image.
+    \item $\rho$: poisoning ratio; $y^*$: attacker-selected target class.
+    \item $\alpha$: trigger strength; $f_s$: suspicious classifier.
+    \item $G_\theta$: spectral-correction generator; $f_r$: repaired classifier.
+    \item $A$: FFT amplitude, $P$: FFT phase, and $M$: learned correction gate.
+    \item $A_c$: clean amplitude, $A_t$: triggered amplitude, and
+    $A_{corr}$: corrected amplitude.
+\end{itemize}
+\end{minipage}}
+
+\section*{Trigger construction}
+For the sinusoidal experiment, the spatial trigger is
+\begin{equation}
+    S(u,v)=\sin\left(2\pi\left(\frac{f_xu}{W}+\frac{f_yv}{H}\right)\right),
+    \qquad
+    t=\operatorname{clip}(x+\alpha S,0,1).
+\end{equation}
+
+\section*{How the trigger strength $\alpha$ is selected}
+There is no universal theorem stating that one value of $\alpha$ is correct for
+every dataset, image size, classifier, or trigger type. The value is a
+hyperparameter that controls the security--utility trade-off. A larger value
+usually makes the attack easier for the classifier to learn, but it can also
+make the modification more visible and can reduce clean-image performance.
+
+For the sinusoidal trigger, the signal is bounded by $-1\leq S\leq 1$.
+Ignoring pixel clipping, this gives
+\begin{equation}
+    \|t-x\|_\infty\leq\alpha,
+    \qquad
+    \mathbb{E}\left[(t-x)^2\right]\approx\frac{\alpha^2}{2}
+\end{equation}
+for a zero-mean sinusoid. Thus, $\alpha$ has a direct mathematical meaning:
+it bounds the maximum added signal and its energy grows approximately with
+$\alpha^2$. Clipping and the content of the original image make the measured
+pixel distortion image-dependent, so these expressions are design guides and
+not substitutes for reporting measured PSNR, SSIM, or pixel error.
+
+The values used in the experiments form an exploratory low-to-high grid:
+\begin{center}
+\small
+\begin{tabular}{c|c|l}
+\textbf{Experiment} & \textbf{Values of $\alpha$} & \textbf{Purpose}\\
+\hline
+CIFAR-100 baseline/ablation & $0.04,\ 0.08,\ 0.12$ & weak, moderate, and stronger trigger\\
+STL-10 strength study & $0.03,\ 0.15,\ 0.25$ & broader resolution-specific stress test\\
+FIBA amplitude study & $0.15,\ 0.30,\ 0.50$ & low, medium, and strong amplitude blending\\
+\end{tabular}
+\end{center}
+
+The CIFAR-100 value $\alpha=0.08$ was used as the main baseline because it is
+large enough to produce a measurable backdoor while remaining a controlled
+perturbation. The neighbouring values $0.04$ and $0.12$ test whether the
+defense is sensitive to a weaker or stronger sinusoidal signal. In the CIFAR
+ablation, $0.08$ produced the lowest generator-corrected ASR among the tested
+values while retaining a high suspicious ASR, so it was a reasonable
+representative operating point rather than a claimed universal default.
+
+FIBA uses a different scale. Inside the frequency mask $W$,
+\begin{equation}
+    A_t-A_c=\alpha W\odot(A_q-A_c).
+\end{equation}
+Consequently, $\alpha$ is an amplitude blending coefficient, not a direct
+pixel-wise perturbation bound. The FIBA values $0.15$, $0.30$, and $0.50$ test
+increasing proportions of the reference amplitude. They must not be compared
+numerically with the sinusoidal values. The mask radius is a separate variable
+that controls how large a frequency region is modified.
+
+For a rigorous study, $\alpha$ should be selected on a validation set using a
+predefined rule such as
+\begin{equation}
+    \alpha^*=\min_{\alpha}\left\{\alpha:\operatorname{ASR}(\alpha)\geq\tau,
+    \operatorname{CleanAcc}(\alpha)\geq\gamma,
+    \operatorname{Distortion}(\alpha)\leq\delta\right\}.
+\end{equation}
+The test set should then be used only once for final reporting. This makes the
+choice reproducible and prevents selecting a trigger strength after seeing the
+final test result.
+
+\begin{algorithm}[t]
+\caption{Selective spectral-correction defense}
+\label{alg:selective-defense}
+\begin{algorithmic}[1]
+\Require Clean set $\mathcal{D}$; poisoning ratio $\rho$; target class $y^*$;
+trigger settings; learning rates; loss weights.
+\Ensure $f_s$, $G_\theta$, $f_r$, and evaluation metrics.
+\Statex \textbf{One-line summary:} Poison data $\rightarrow$ train suspicious
+model $\rightarrow$ analyze FFT spectra $\rightarrow$ predict gate $M$
+$\rightarrow$ correct amplitude $\rightarrow$ reconstruct image
+$\rightarrow$ repair model $\rightarrow$ evaluate.
+
+\State Select approximately $\rho|\mathcal{D}|$ non-target training images.
+\For{each selected image $(x_i,y_i)$}
+    \State $t_i\gets\operatorname{Trigger}(x_i;\alpha)$.
+    \State Add $(t_i,y^*)$ to the poisoned training set.
+\EndFor
+\State Train $f_s$ on clean samples and poisoned samples.
+\State Measure clean accuracy and triggered attack success rate of $f_s$.
+
+\For{each generator training epoch}
+    \For{each clean minibatch $(x,y)$ with $y\neq y^*$}
+        \State $t\gets\operatorname{Trigger}(x;\alpha)$.
+        \Statex \textit{Compare the clean and triggered images in the frequency domain.}
+        \State $(A_c,P_c)\gets\operatorname{FFT}(x)$ and
+        $(A_t,P_t)\gets\operatorname{FFT}(t)$.
+        \Statex \textit{The generator receives clean amplitude, triggered amplitude, and their difference.}
+        \State $Z\gets\operatorname{Concat}(\mathcal{N}(\log(1+A_c)),
+        \mathcal{N}(\log(1+A_t)),
+        \mathcal{N}(|\log(1+A_t)-\log(1+A_c)|))$.
+        \Statex \textit{These three inputs provide spectral evidence; they are not yet the correction map.}
+        \Statex \textit{Predict a value between 0 and 1 for every channel and frequency location.}
+        \State $M\gets G_\theta(Z)$.
+        \Statex \textit{Use the learned gate to move suspicious amplitudes toward their clean values.}
+        \State $A_{corr}\gets A_t-M\odot(A_t-A_c)$.
+        \Statex \textit{Reconstruct the image using corrected amplitude and triggered phase.}
+        \State $x_{corr}\gets\operatorname{IFFT}(A_{corr},P_t)$.
+        \Statex \textit{Train for correct classification, small image change, sparse correction, and smoothness.}
+        \State $\mathcal{L}_G\gets\operatorname{CE}(f_s(x_{corr}),y)
+        +\lambda_{rec}\|x_{corr}-x\|_1
+        +\lambda_{sp}\|M\|_1+\lambda_{sm}\operatorname{TV}(M)$.
+        \State Update $\theta$ by minimizing $\mathcal{L}_G$.
+    \EndFor
+\EndFor
+
+\State Initialize $f_r\gets f_s$ and freeze $G_\theta$.
+\For{each repair epoch}
+    \For{each clean minibatch $(x,y)$}
+        \State Generate $t$ and $x_{corr}$ using the trained generator.
+        \State Train $f_r$ on $(x,y)$, $(t,y)$, and $(x_{corr},y)$.
+    \EndFor
+\EndFor
+
+\For{each non-target test image $(x,y)$}
+    \State Generate $t$ and $x_{corr}$.
+    \State Record predictions from $f_s$ and $f_r$ on clean, triggered,
+    and corrected images.
+\EndFor
+\State Report clean accuracy, corrected accuracy, ASR, reconstruction error,
+and correction-map visualizations.
+\end{algorithmic}
+\end{algorithm}
+
+\section*{Mathematics explained in plain language}
+The algorithm uses compact notation so that the complete pipeline fits in one
+algorithm block. The following explanation expands the important lines.
+
+\subsection*{1. Creating the triggered image}
+The clean image is denoted by $x$. The sinusoidal trigger $S$ is a repeating
+brightness pattern. The values $f_x$ and $f_y$ control how many oscillations
+occur horizontally and vertically. The parameter $\alpha$ controls the size of
+the added pattern:
+\begin{equation}
+    t=\operatorname{clip}(x+\alpha S,0,1).
+\end{equation}
+The function $\operatorname{clip}$ keeps every pixel in the valid image range
+$[0,1]$. During poisoning, the triggered image $t_i$ is deliberately assigned
+the target label $y^*$, even though its original image belongs to another
+class. This teaches the suspicious classifier the hidden rule
+``trigger present $\rightarrow$ target class''.
+
+\subsection*{2. Splitting an image into amplitude and phase}
+The FFT changes the representation of an image from pixels to frequencies:
+\begin{equation}
+    \operatorname{FFT}(x)=A_c e^{jP_c},
+    \qquad
+    \operatorname{FFT}(t)=A_t e^{jP_t}.
+\end{equation}
+Here, $A_c$ and $A_t$ describe the strength of each frequency component in the
+clean and triggered images. The phase terms $P_c$ and $P_t$ describe how those
+components are spatially arranged. In practical terms, amplitude says ``how
+much of a frequency is present'', while phase helps determine ``where the
+structure appears in the image''.
+
+\subsection*{3. Building the generator input}
+The generator does not receive only one spectrum. It receives three kinds of
+evidence:
+\begin{equation}
+    Z=\operatorname{Concat}\left(\mathcal{N}(\log(1+A_c)),
+    \mathcal{N}(\log(1+A_t)),
+    \mathcal{N}\left(|\log(1+A_t)-\log(1+A_c)|\right)\right).
+\end{equation}
+The first block shows the clean amplitude, the second shows the triggered
+amplitude, and the third shows where the two amplitudes differ. The logarithm
+$\log(1+A)$ compresses very large FFT values so that weak frequencies are not
+completely hidden. The operator $\mathcal{N}$ normalizes the values so that
+different images and channels can be processed on a comparable scale.
+
+The third block is evidence, not the final correction map. It says where a
+change occurred; it does not decide whether that change is malicious or useful.
+
+\subsection*{4. The generator's correction gate}
+The generator processes $Z$ and produces
+\begin{equation}
+    M=G_\theta(Z),
+    \qquad 0\leq M\leq 1.
+\end{equation}
+$M$ is a learned gate with one value for each channel and frequency location.
+It answers the question: ``How strongly should this amplitude component be
+corrected?'' It is not a binary decision and it is not the same as the
+amplitude difference.
+
+The correction rule is
+\begin{equation}
+    A_{corr}=A_t-M\odot(A_t-A_c),
+\end{equation}
+where $\odot$ means element-by-element multiplication. At one frequency:
+\begin{itemize}
+    \item If $M=0$, no correction is made and the triggered amplitude remains.
+    \item If $M=1$, the amplitude is moved completely to the clean value.
+    \item If $M=0.5$, half of the difference is removed.
+\end{itemize}
+Therefore, the generator can correct suspicious frequencies selectively rather
+than suppressing every high-frequency component.
+
+\subsection*{5. Reconstructing the corrected image}
+The corrected amplitude is combined with the triggered phase and passed through
+the inverse FFT:
+\begin{equation}
+    x_{corr}=\operatorname{clip}\left(\operatorname{Re}\left[
+    \operatorname{IFFT}\left(A_{corr}e^{jP_t}\right)\right],0,1\right).
+\end{equation}
+The real part is used because numerical FFT calculations can contain tiny
+imaginary rounding errors. The result is clipped again to remain a valid image.
+The design changes amplitude while preserving the selected phase so that the
+image structure is disturbed as little as possible.
+
+\subsection*{6. Why the generator has four loss terms}
+The generator is trained using
+\begin{equation}
+    \mathcal{L}_G=\mathcal{L}_{cls}
+    +\lambda_{rec}\mathcal{L}_{rec}
+    +\lambda_{sp}\mathcal{L}_{sp}
+    +\lambda_{sm}\mathcal{L}_{sm}.
+\end{equation}
+Each term gives the generator a different requirement:
+\begin{itemize}
+    \item $\mathcal{L}_{cls}$ penalizes an incorrect prediction. The corrected
+    image should receive its original clean label from the suspicious model.
+    \item $\mathcal{L}_{rec}=\|x_{corr}-x\|_1$ penalizes unnecessary image
+    changes and encourages the corrected image to remain close to the clean one.
+    \item $\mathcal{L}_{sp}=\|M\|_1$ encourages a smaller correction gate, so
+    the generator does not modify the whole spectrum without reason.
+    \item $\mathcal{L}_{sm}=\operatorname{TV}(M)$ discourages unstable isolated
+    values and encourages a more coherent correction map.
+\end{itemize}
+The coefficients $\lambda_{rec}$, $\lambda_{sp}$, and $\lambda_{sm}$ control
+the trade-off between classification recovery, visual preservation, sparsity,
+and map smoothness.
+
+\subsection*{7. What the repair stage does}
+After the generator is trained, its parameters are frozen. A copy of the
+suspicious classifier is then fine-tuned using three versions of each training
+image:
+\begin{equation}
+    (x,y),\qquad (t,y),\qquad (x_{corr},y).
+\end{equation}
+The triggered image is now given its original label $y$ rather than the
+attacker's target label $y^*$. This teaches the repaired classifier that the
+trigger must not change the class. The clean images preserve normal
+classification ability, while the triggered and corrected images weaken the
+learned backdoor association.
+
+\subsection*{8. Reading the final ASR formula}
+The attack success rate is
+\begin{equation}
+    \operatorname{ASR}(f)=
+    \frac{\sum_i\mathbf{1}\left[\arg\max f(t_i)=y^*\right]}
+    {N_{\mathrm{non-target}}}.
+\end{equation}
+For every non-target test image, we ask whether the triggered version is
+classified as the attacker's target class. The indicator function is $1$ when
+that happens and $0$ otherwise. A high suspicious ASR confirms that the
+backdoor was successfully implanted. A low repaired ASR indicates that the
+defense reduced the backdoor behaviour.
+
+\section*{Spectral correction equations}
+The generator receives normalized spectral evidence:
+\begin{equation}
+    Z=\operatorname{Concat}\left(\mathcal{N}(\log(1+A_c)),
+    \mathcal{N}(\log(1+A_t)),
+    \mathcal{N}\left(|\log(1+A_t)-\log(1+A_c)|\right)\right).
+\end{equation}
+It predicts a correction gate $M\in[0,1]^{C\times H\times W}$:
+\begin{equation}
+    M=G_\theta(Z).
+\end{equation}
+The gate moves the triggered amplitude toward the clean amplitude:
+\begin{equation}
+    A_{corr}=A_t-M\odot(A_t-A_c).
+\end{equation}
+The corrected image is reconstructed with the corrected amplitude and triggered
+phase:
+\begin{equation}
+    x_{corr}=\operatorname{clip}\left(\operatorname{Re}\left[
+    \operatorname{IFFT}\left(A_{corr}e^{jP_t}\right)\right],0,1\right).
+\end{equation}
+
+The generator objective is
+\begin{equation}
+    \mathcal{L}_G=\mathcal{L}_{cls}
+    +\lambda_{rec}\mathcal{L}_{rec}
+    +\lambda_{sp}\mathcal{L}_{sp}
+    +\lambda_{sm}\mathcal{L}_{sm},
+\end{equation}
+where classification encourages the original label, reconstruction preserves
+the clean image, sparsity limits unnecessary spectral changes, and smoothness
+discourages unstable isolated values in the correction map.
+
+\section*{FIBA amplitude-trigger alternative}
+For FIBA, a reference image amplitude $A_q$ is blended into a frequency mask
+$W$ while retaining the clean phase:
+\begin{equation}
+    A_t=(1-W)\odot A_c+W\odot\left((1-\alpha)A_c+\alpha A_q\right),
+    \qquad P_t=P_c.
+\end{equation}
+The poisoned image is reconstructed as
+\begin{equation}
+    t=\operatorname{clip}\left(\operatorname{Re}\left[
+    \operatorname{IFFT}\left(A_te^{jP_c}\right)\right],0,1\right).
+\end{equation}
+The defense then uses the same generator and correction rule.
+
+\section*{Evaluation metric}
+For a target label $y^*$, attack success rate is measured only on non-target
+test images:
+\begin{equation}
+    \operatorname{ASR}(f)=
+    \frac{\sum_{i=1}^{N_{\mathrm{non-target}}}
+    \mathbf{1}\left[\arg\max f(t_i)=y^*\right]}
+    {N_{\mathrm{non-target}}}.
+\end{equation}
+
+\end{document}

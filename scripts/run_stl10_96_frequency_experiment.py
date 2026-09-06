@@ -812,6 +812,15 @@ def save_final_panels(
         triggered_amp = amplitude_spectrum(triggered_batch.squeeze(0).cpu())
         corrected_amp = amplitude_spectrum(corrected_batch.squeeze(0).cpu())
         amplitude_difference = (triggered_amp - clean_amp).abs()
+        # The gate M is only the generator's decision about where to correct.
+        # Multiplying it by the observed amplitude difference shows the actual
+        # spectral correction applied at each frequency.
+        clean_channel_amp, _ = fft_amplitude_phase(clean_batch)
+        triggered_channel_amp, _ = fft_amplitude_phase(triggered_batch)
+        effective_correction = (
+            correction_map.squeeze(0).cpu()
+            * (triggered_channel_amp - clean_channel_amp).abs().squeeze(0).cpu()
+        ).mean(dim=0)
         true_name = label_names[clean_label]
         record = {
             "index": index,
@@ -833,8 +842,13 @@ def save_final_panels(
                 (f"repair trig:{record['repaired_triggered']}", triggered_batch.squeeze(0).cpu(), "rgb"),
                 (f"repair corr:{record['repaired_corrected']}", corrected_batch.squeeze(0).cpu(), "rgb"),
                 (
-                    "correction map",
+                    "correction gate M",
                     normalize_minmax(shift_frequency_map(correction_map.squeeze(0).cpu())),
+                    "gray",
+                ),
+                (
+                    "effective correction",
+                    normalize_minmax(shift_frequency_map(effective_correction)),
                     "gray",
                 ),
                 ("trigger amp", normalize_minmax(triggered_amp), "gray"),
