@@ -1,0 +1,48 @@
+{
+  "benchmark_name": "ASB-Benchmark",
+  "benchmark_version": "dtd-v1",
+  "dataset": "DTD",
+  "resolved_dtd_root": "D:\\Research_Paper\\Absolute_Dataset\\dtd",
+  "official_split_number": 1,
+  "image_size_for_future_training": 224,
+  "seed": 42,
+  "target_class": "banded",
+  "target_label": 0,
+  "poison_ratio_requested_over_full_train_split": 0.1,
+  "poisoned_training_sources": 188,
+  "source_split_counts": {
+    "test": 1880,
+    "train": 1880,
+    "validation": 1880
+  },
+  "variant_role_counts": {
+    "attack_poison_train": 188,
+    "clean_calibration": 1880,
+    "clean_train": 1880,
+    "defense_train": 5520,
+    "final_test_clean": 1880,
+    "final_test_triggered": 12880,
+    "validation": 5520
+  },
+  "total_variants": 29748,
+  "audit": {
+    "passed": true,
+    "expected_images": 5640,
+    "observed_images": 5640,
+    "expected_classes": 47,
+    "observed_classes": 47,
+    "images_per_class": 120,
+    "images_per_class_per_split": 40,
+    "cross_split_exact_duplicate_checksum_groups": 9
+  },
+  "files": {
+    "clean_manifest": "Absolute_Dataset\\asb_dtd_v1\\clean_manifest.jsonl",
+    "variant_manifest": "Absolute_Dataset\\asb_dtd_v1\\variant_manifest.jsonl",
+    "trigger_catalog": "Absolute_Dataset\\asb_dtd_v1\\trigger_catalog.json"
+  },
+  "limitations": [
+    "Trigger strengths remain uncalibrated until validation analysis.",
+    "FIBA, phase, joint, and input-aware variants are catalogued but pending.",
+    "Clean counterparts are evaluator-only in the future input-only protocol."
+  ]
+}

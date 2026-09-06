@@ -1,0 +1,176 @@
+{
+  "development_triggers": {
+    "fourier_middle": {
+      "status": "implemented",
+      "seen_during_defense_training": true,
+      "config": {
+        "trigger_kind": "fourier_band",
+        "strength": 0.2,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "haar_lh": {
+      "status": "implemented",
+      "seen_during_defense_training": true,
+      "config": {
+        "trigger_kind": "haar_wavelet",
+        "strength": 0.25,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "LH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "haar_hl": {
+      "status": "implemented",
+      "seen_during_defense_training": true,
+      "config": {
+        "trigger_kind": "haar_wavelet",
+        "strength": 0.25,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HL",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    }
+  },
+  "held_out_triggers": {
+    "fourier_low": {
+      "status": "implemented",
+      "seen_during_defense_training": false,
+      "config": {
+        "trigger_kind": "fourier_band",
+        "strength": 0.2,
+        "frequency_band": "low",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "fourier_high": {
+      "status": "implemented",
+      "seen_during_defense_training": false,
+      "config": {
+        "trigger_kind": "fourier_band",
+        "strength": 0.2,
+        "frequency_band": "high",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "fourier_multi": {
+      "status": "implemented",
+      "seen_during_defense_training": false,
+      "config": {
+        "trigger_kind": "fourier_band",
+        "strength": 0.2,
+        "frequency_band": "multi",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "haar_hh": {
+      "status": "implemented",
+      "seen_during_defense_training": false,
+      "config": {
+        "trigger_kind": "haar_wavelet",
+        "strength": 0.25,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    }
+  },
+  "planned_triggers": {
+    "fiba_amplitude": {
+      "status": "planned",
+      "seen_during_defense_training": false,
+      "description": "Reference-image amplitude injection; legacy implementation exists."
+    },
+    "phase_only": {
+      "status": "planned",
+      "seen_during_defense_training": false,
+      "description": "Held-out phase manipulation; advanced implementation pending."
+    },
+    "amplitude_phase": {
+      "status": "planned",
+      "seen_during_defense_training": false,
+      "description": "Joint amplitude and phase manipulation; implementation pending."
+    },
+    "input_aware": {
+      "status": "planned",
+      "seen_during_defense_training": false,
+      "description": "Input-dependent adaptive trigger; implementation pending."
+    }
+  },
+  "scientific_note": "Strength values are initial generation parameters, not final calibrated values. Calibrate each family on validation data using perceptual and ASR criteria before final evaluation."
+}

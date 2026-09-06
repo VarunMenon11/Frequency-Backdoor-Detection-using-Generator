@@ -1,0 +1,41 @@
+{
+  "archive": "D:\\Research_Paper\\datasets\\DTD.zip",
+  "archive_size_bytes": 1252666304,
+  "archive_sha256": "2D8092F0C3B28A2C53FADA394D0267AB066398C1DDA868D659402ED79F2857B3",
+  "audit_time_local": "2026-09-06T13:05:24+05:30",
+  "source_reported_by_user": "https://www.kaggle.com/datasets/jmexpert/describable-textures-dataset-dtd",
+  "official_dataset_page": "https://www.robots.ox.ac.uk/~vgg/data/dtd/",
+  "archive_checks": {
+    "entries": 11346,
+    "jpeg_files": 11280,
+    "text_files": 62,
+    "mat_files": 2,
+    "desktop_metadata_files": 2,
+    "uncompressed_bytes": 1266992478,
+    "compression_ratio": 1.01,
+    "largest_entry_bytes": 838759,
+    "unsafe_paths": 0,
+    "executable_or_script_files": 0,
+    "nested_archives": 0,
+    "duplicate_exact_paths": 0
+  },
+  "duplicate_tree_check": {
+    "first_prefix": "dtd-r1.0.1/dtd/",
+    "second_prefix": "dtd/",
+    "files_per_prefix": 5673,
+    "jpeg_files_per_prefix": 5640,
+    "label_text_files_per_prefix": 31,
+    "missing_relative_paths": 0,
+    "size_mismatches": 0,
+    "selected_prefix": "dtd-r1.0.1/dtd/",
+    "extraction_destination": "D:\\Research_Paper\\Absolute_Dataset\\dtd"
+  },
+  "antivirus_check": {
+    "engine": "Microsoft Defender Antivirus",
+    "custom_scan_command_completed": true,
+    "alert_observed_during_scan": false,
+    "protected_detection_history_recheck": "not_available_without_elevation"
+  },
+  "result": "No suspicious archive structure or file type was found, and the completed antivirus scan raised no observed alert.",
+  "caveat": "These checks reduce risk but do not mathematically guarantee that an archive is harmless."
+}
