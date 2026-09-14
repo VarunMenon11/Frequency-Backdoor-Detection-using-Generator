@@ -17,6 +17,31 @@ def checkpoint_selection_score(clean_accuracy):
     return float(clean_accuracy)
 
 
+def attack_checkpoint_score(validation_asr, clean_accuracy, minimum_clean_accuracy):
+    """Rank attack checkpoints without rewarding ordinary target-class bias.
+
+    The checkpoint must first satisfy the predeclared clean-accuracy floor.
+    Among eligible epochs, conditional ASR is primary, same-model target-rate
+    lift is the first tie-breaker, and clean accuracy is the final tie-breaker.
+    """
+    clean_accuracy = float(clean_accuracy)
+    if clean_accuracy < float(minimum_clean_accuracy) or not validation_asr:
+        return None
+    conditional = [
+        float(metrics["conditional_asr_clean_correct"])
+        for metrics in validation_asr.values()
+        if metrics["conditional_asr_clean_correct"] is not None
+    ]
+    if not conditional:
+        return None
+    mean_conditional = sum(conditional) / len(conditional)
+    mean_lift = sum(
+        float(metrics["same_model_target_rate_lift"])
+        for metrics in validation_asr.values()
+    ) / len(validation_asr)
+    return mean_conditional, mean_lift, clean_accuracy
+
+
 def evaluation_transform(image_size):
     return transforms.Compose([
         transforms.Resize(

@@ -25,6 +25,13 @@ EXPECTED_PER_CLASS_PER_SPLIT = 40
 
 
 DEVELOPMENT_TRIGGERS = {
+    "ftrojan_mix": AdvancedTriggerConfig(
+        trigger_kind="ftrojan_dct",
+        strength=50.0,
+        dct_block_size=32,
+        dct_positions=((15, 15), (31, 31)),
+        dct_channels=(1, 2),
+    ),
     "fourier_middle": AdvancedTriggerConfig(
         trigger_kind="fourier_band",
         frequency_band="middle",

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import torch
 
-from datasets import filter_manifest_rows, read_jsonl
+from datasets import build_poisoned_training_rows, filter_manifest_rows, read_jsonl
 from evaluation.asb_classifier import (
     clean_metrics, evaluate_trigger, evaluation_transform, predict_rows,
     resolve_evaluation_config,
@@ -24,7 +24,10 @@ def parse_args():
     parser.add_argument("--manifest-dir", type=Path, default=Path("Absolute_Dataset/asb_dtd_v1"))
     parser.add_argument("--images-root", type=Path, default=Path("Absolute_Dataset/dtd/images"))
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--split", choices=["validation", "test"], default="validation")
+    parser.add_argument(
+        "--split", choices=["train-poison", "validation", "test"], default="validation",
+        help="train-poison audits the exact selected poison sources using deterministic evaluation crops.",
+    )
     parser.add_argument("--triggers", default=None, help="Comma-separated names; defaults to checkpoint attack triggers.")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--num-workers", type=int, default=0)
@@ -58,12 +61,28 @@ def main():
     benchmark = json.loads((args.manifest_dir / "benchmark_summary.json").read_text(encoding="utf-8"))
     if class_names_from_rows(rows) != config["class_names"] or int(benchmark["target_label"]) != config["target_label"]:
         raise ValueError("Manifest classes/target do not match checkpoint")
-    role = "clean_calibration" if args.split == "validation" else "final_test_clean"
-    clean_rows = filter_manifest_rows(rows, protocol_role=role, variant_name="clean")
     names = config["attack_triggers"] if args.triggers is None else [n.strip() for n in args.triggers.split(",") if n.strip()]
     if len(set(names)) != len(names):
         raise ValueError("Duplicate trigger names")
     configs = {name: resolve_evaluation_config(rows, name, config["attack_trigger_configs"]) for name in names}
+    if args.split == "train-poison":
+        if len(names) != 1 or names != config["attack_triggers"]:
+            raise ValueError("train-poison audit currently requires the checkpoint's one configured attack trigger")
+        selected, _ = build_poisoned_training_rows(
+            rows, trigger_configs=configs, target_label=config["target_label"],
+            poison_ratio=config["poison_ratio"], seed=config["seed"],
+        )
+        poison_ids = {
+            str(row["source_id"]) for row in selected
+            if row["variant_name"] == names[0]
+        }
+        clean_rows = [
+            row for row in filter_manifest_rows(rows, protocol_role="clean_train", variant_name="clean")
+            if str(row["source_id"]) in poison_ids
+        ]
+    else:
+        role = "clean_calibration" if args.split == "validation" else "final_test_clean"
+        clean_rows = filter_manifest_rows(rows, protocol_role=role, variant_name="clean")
     model = build_pretrained_classifier(
         backbone=config["backbone"], num_classes=config["num_classes"], weights="none"
     )

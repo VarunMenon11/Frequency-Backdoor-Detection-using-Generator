@@ -1,5 +1,26 @@
 {
   "development_triggers": {
+    "ftrojan_mix": {
+      "status": "implemented",
+      "seen_during_defense_training": true,
+      "config": {
+        "trigger_kind": "ftrojan_dct",
+        "strength": 50.0,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [1.0, 1.0, 1.0],
+        "dct_block_size": 32,
+        "dct_positions": [[15, 15], [31, 31]],
+        "dct_channels": [1, 2]
+      },
+      "adaptation_note": "FTrojan-style DCT trigger adapted to the DTD 224x224 PyTorch pipeline; not an exact reproduction of the original experiments."
+    },
     "fourier_middle": {
       "status": "implemented",
       "seen_during_defense_training": true,

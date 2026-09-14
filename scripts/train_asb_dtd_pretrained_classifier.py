@@ -22,7 +22,8 @@ from datasets import (
 )
 from models import build_pretrained_classifier, count_trainable_parameters
 from evaluation.asb_classifier import (
-    SELECTION_POLICY, apply_evaluation_configs, checkpoint_selection_score,
+    SELECTION_POLICY, apply_evaluation_configs, attack_checkpoint_score,
+    checkpoint_selection_score,
     clean_metrics, evaluate_trigger, evaluation_transform, predict_rows,
     resolve_evaluation_config,
 )
@@ -94,6 +95,15 @@ def parse_args() -> argparse.Namespace:
         "--validation-only", action="store_true",
         help="Calibration: save checkpoints and validation metrics without evaluating test data.",
     )
+    parser.add_argument(
+        "--attack-checkpoint-min-clean-accuracy",
+        type=float,
+        default=None,
+        help=(
+            "Also save the validation epoch with the highest conditional ASR, "
+            "provided validation clean accuracy meets this predeclared floor."
+        ),
+    )
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument(
         "--overwrite",
@@ -145,13 +155,13 @@ def main() -> None:
         rows, protocol_role="final_test_clean", variant_name="clean"
     )
     validation_trigger_names = attack_trigger_names
-    test_trigger_names = sorted(
+    test_trigger_names = sorted(set(attack_trigger_names) | set(
         {
             str(row["variant_name"])
             for row in rows
             if row["protocol_role"] == "final_test_triggered"
         }
-    )
+    ))
 
     train_transform = transforms.Compose(
         [
@@ -231,6 +241,9 @@ def main() -> None:
     best_epoch = 0
     best_path = args.experiment_dir / "suspicious_classifier_best.pt"
     last_path = args.experiment_dir / "suspicious_classifier_last.pt"
+    attack_path = args.experiment_dir / "suspicious_classifier_best_attack.pt"
+    best_attack_key = None
+    best_attack_epoch = None
 
     for epoch in range(1, args.epochs + 1):
         feature_trainable = epoch > args.freeze_epochs
@@ -261,6 +274,13 @@ def main() -> None:
             if validation_asr
             else None
         )
+        attack_key = None
+        if args.attack_checkpoint_min_clean_accuracy is not None:
+            attack_key = attack_checkpoint_score(
+                validation_asr,
+                validation_clean["accuracy"],
+                args.attack_checkpoint_min_clean_accuracy,
+            )
         selection_score = checkpoint_selection_score(validation_clean["accuracy"])
         epoch_record = {
             "epoch": epoch,
@@ -272,6 +292,8 @@ def main() -> None:
             "validation_mean_seen_asr": mean_seen_asr,
             "selection_score": selection_score,
             "checkpoint_selection_policy": SELECTION_POLICY,
+            "attack_checkpoint_eligible": attack_key is not None,
+            "attack_checkpoint_score": list(attack_key) if attack_key is not None else None,
         }
         history.append(epoch_record)
         write_json(args.experiment_dir / "training_history.json", history)
@@ -301,6 +323,29 @@ def main() -> None:
                 f"net lift {metrics['same_model_target_rate_lift']:.4f} | "
                 f"new target {metrics['new_target_flips']} | left target {metrics['left_target_flips']}"
             )
+
+        if attack_key is not None and (
+            best_attack_key is None or attack_key > best_attack_key
+        ):
+            best_attack_key = attack_key
+            best_attack_epoch = epoch
+            save_checkpoint(
+                attack_path,
+                model,
+                run_config,
+                epoch=epoch,
+                selection_score=attack_key[0],
+                selection_details={
+                    "policy": (
+                        "maximum_validation_conditional_asr_subject_to_clean_floor; "
+                        "tie_break_same_model_target_rate_lift_then_clean_accuracy"
+                    ),
+                    "minimum_clean_accuracy": args.attack_checkpoint_min_clean_accuracy,
+                    "conditional_asr": attack_key[0],
+                    "same_model_target_rate_lift": attack_key[1],
+                    "clean_accuracy": attack_key[2],
+                },
+            )
         scheduler.step()
 
     save_checkpoint(
@@ -317,9 +362,24 @@ def main() -> None:
         selected = history[best_epoch - 1]
         write_json(args.experiment_dir / "validation_evaluation.json", selected)
         write_json(args.output_dir / "validation_evaluation.json", selected)
+        if best_attack_epoch is not None:
+            attack_selected = history[best_attack_epoch - 1]
+            write_json(
+                args.experiment_dir / "attack_checkpoint_validation_evaluation.json",
+                attack_selected,
+            )
+            write_json(
+                args.output_dir / "attack_checkpoint_validation_evaluation.json",
+                attack_selected,
+            )
         save_training_curves(history, args.output_dir)
         print("Best validation-clean epoch:", best_epoch)
         print("Saved checkpoint:", best_path)
+        if best_attack_epoch is None and args.attack_checkpoint_min_clean_accuracy is not None:
+            print("No attack checkpoint met the clean-accuracy floor.")
+        elif best_attack_epoch is not None:
+            print("Best attack-qualified epoch:", best_attack_epoch)
+            print("Saved attack checkpoint:", attack_path)
         print("Calibration only: test evaluation and test panels were skipped.")
         return
 
@@ -380,6 +440,13 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--trigger-strength must be non-negative")
     if args.attack_triggers.strip().lower() == "none" and args.poison_ratio != 0.0:
         raise ValueError("Use --poison-ratio 0 with --attack-triggers none")
+    if args.attack_checkpoint_min_clean_accuracy is not None:
+        if not 0.0 <= args.attack_checkpoint_min_clean_accuracy <= 1.0:
+            raise ValueError(
+                "--attack-checkpoint-min-clean-accuracy must be between zero and one"
+            )
+        if args.attack_triggers.strip().lower() == "none":
+            raise ValueError("Attack checkpoint selection requires an attack trigger")
 
 
 def prepare_result_directories(args: argparse.Namespace) -> None:
@@ -387,6 +454,7 @@ def prepare_result_directories(args: argparse.Namespace) -> None:
         args.experiment_dir / "suspicious_classifier_best.pt",
         args.experiment_dir / "final_evaluation.json",
         args.output_dir / "final_evaluation.json",
+        args.experiment_dir / "suspicious_classifier_best_attack.pt",
     ]
     existing = [path for path in protected if path.exists()]
     if existing and not args.overwrite:
@@ -624,7 +692,9 @@ def evaluate_final_test(
     }
 
 
-def save_checkpoint(path, model, run_config, *, epoch, selection_score):
+def save_checkpoint(
+    path, model, run_config, *, epoch, selection_score, selection_details=None
+):
     torch.save(
         {
             "model_state_dict": model.state_dict(),
@@ -632,6 +702,7 @@ def save_checkpoint(path, model, run_config, *, epoch, selection_score):
             "run_config": run_config,
             "epoch": epoch,
             "selection_score": selection_score,
+            "selection_details": selection_details,
         },
         path,
     )

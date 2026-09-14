@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 
 
-AdvancedTriggerKind = Literal["fourier_band", "haar_wavelet"]
+AdvancedTriggerKind = Literal["fourier_band", "haar_wavelet", "ftrojan_dct"]
 FrequencyBand = Literal["low", "middle", "high", "multi"]
 WaveletSubband = Literal["LH", "HL", "HH"]
 
@@ -37,6 +37,9 @@ class AdvancedTriggerConfig:
     wavelet_frequency: float = 3.0
     wavelet_angle: float = 0.0
     channel_weights: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    dct_block_size: int = 32
+    dct_positions: tuple[tuple[int, int], ...] = ((15, 15), (31, 31))
+    dct_channels: tuple[int, ...] = (1, 2)
 
     def validate(self) -> None:
         if self.strength < 0.0:
@@ -56,6 +59,18 @@ class AdvancedTriggerConfig:
             raise ValueError("wavelet_frequency must be positive")
         if len(self.channel_weights) != 3:
             raise ValueError("channel_weights must contain three RGB values")
+        if self.dct_block_size <= 0:
+            raise ValueError("dct_block_size must be positive")
+        if not self.dct_positions:
+            raise ValueError("dct_positions must not be empty")
+        if any(
+            len(position) != 2
+            or not all(0 <= int(value) < self.dct_block_size for value in position)
+            for position in self.dct_positions
+        ):
+            raise ValueError("Every DCT position must be inside its block")
+        if not self.dct_channels or any(int(channel) not in (0, 1, 2) for channel in self.dct_channels):
+            raise ValueError("dct_channels must contain YCrCb channel indices 0, 1, or 2")
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -75,6 +90,8 @@ def apply_advanced_trigger(
         result = _apply_fourier_band_trigger(batch, config)
     elif config.trigger_kind == "haar_wavelet":
         result = _apply_haar_wavelet_trigger(batch, config)
+    elif config.trigger_kind == "ftrojan_dct":
+        result = _apply_ftrojan_dct_trigger(batch, config)
     else:
         raise ValueError(f"Unsupported advanced trigger kind: {config.trigger_kind}")
 
@@ -215,6 +232,64 @@ def _apply_haar_wavelet_trigger(
     return reconstructed[..., :original_height, :original_width]
 
 
+def _apply_ftrojan_dct_trigger(
+    images: torch.Tensor,
+    config: AdvancedTriggerConfig,
+) -> torch.Tensor:
+    """Add fixed block-DCT coefficients in YCrCb chroma channels.
+
+    By DCT linearity, inverse-transforming a sparse coefficient delta is
+    equivalent to adding its cosine basis in each spatial block. This avoids a
+    large intermediate DCT while retaining the FTrojan-style injection rule.
+    Strength is the coefficient magnitude on the conventional [0,255] scale.
+    """
+    if config.strength == 0.0:
+        return images.clone()
+    block_size = config.dct_block_size
+    block_delta = torch.zeros(
+        (block_size, block_size), device=images.device, dtype=torch.float32
+    )
+    coordinates = torch.arange(block_size, device=images.device, dtype=torch.float32)
+    for row_frequency, column_frequency in config.dct_positions:
+        row_basis = _dct_basis(int(row_frequency), coordinates, block_size)
+        column_basis = _dct_basis(int(column_frequency), coordinates, block_size)
+        block_delta += config.strength * row_basis[:, None] * column_basis[None, :]
+
+    height, width = images.shape[-2:]
+    repeats_y = (height + block_size - 1) // block_size
+    repeats_x = (width + block_size - 1) // block_size
+    delta = block_delta.repeat(repeats_y, repeats_x)[:height, :width]
+
+    rgb = images.float() * 255.0
+    red, green, blue = rgb.unbind(dim=1)
+    luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+    chroma_red = 128.0 + 0.713 * (red - luminance)
+    chroma_blue = 128.0 + 0.564 * (blue - luminance)
+    ycrcb = torch.stack((luminance, chroma_red, chroma_blue), dim=1)
+    for channel in config.dct_channels:
+        ycrcb[:, int(channel)] += delta
+
+    luminance, chroma_red, chroma_blue = ycrcb.unbind(dim=1)
+    chroma_red = chroma_red - 128.0
+    chroma_blue = chroma_blue - 128.0
+    reconstructed = torch.stack(
+        (
+            luminance + 1.403 * chroma_red,
+            luminance - 0.714 * chroma_red - 0.344 * chroma_blue,
+            luminance + 1.773 * chroma_blue,
+        ),
+        dim=1,
+    )
+    return reconstructed / 255.0
+
+
+def _dct_basis(frequency: int, coordinates: torch.Tensor, size: int) -> torch.Tensor:
+    scale = (1.0 / size) ** 0.5 if frequency == 0 else (2.0 / size) ** 0.5
+    return scale * torch.cos(
+        torch.pi * (2.0 * coordinates + 1.0) * frequency / (2.0 * size)
+    )
+
+
 def _haar_forward(images: torch.Tensor) -> dict[str, torch.Tensor]:
     top_left = images[..., 0::2, 0::2]
     top_right = images[..., 0::2, 1::2]
@@ -300,4 +375,3 @@ def _validate_rgb_batch(images: torch.Tensor) -> None:
         raise TypeError("Advanced triggers expect floating-point tensors in [0, 1]")
     if not torch.isfinite(images).all():
         raise ValueError("Input contains NaN or infinite values")
-
