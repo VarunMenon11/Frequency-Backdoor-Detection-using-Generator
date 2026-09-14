@@ -35,6 +35,10 @@ Advanced_Experiments/**
 Advanced_Outputs/**
 !Advanced_Outputs/README.md
 
+# Reproducible local/Kaggle data products (upload separately; do not commit)
+Absolute_Dataset/dtd_wavelet_single_v1/
+Absolute_Dataset/dtd_wavelet_single_v1_metadata_previews.zip
+
 # Local editor files
 .idea/
 .vscode/

@@ -21,6 +21,11 @@ from datasets import (
     read_jsonl,
 )
 from models import build_pretrained_classifier, count_trainable_parameters
+from evaluation.asb_classifier import (
+    SELECTION_POLICY, apply_evaluation_configs, checkpoint_selection_score,
+    clean_metrics, evaluate_trigger, evaluation_transform, predict_rows,
+    resolve_evaluation_config,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,6 +90,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-panels", type=int, default=5)
     parser.add_argument("--max-train-batches", type=int, default=None)
     parser.add_argument("--max-eval-batches", type=int, default=None)
+    parser.add_argument(
+        "--validation-only", action="store_true",
+        help="Calibration: save checkpoints and validation metrics without evaluating test data.",
+    )
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument(
         "--overwrite",
@@ -156,17 +165,7 @@ def main() -> None:
             transforms.ToTensor(),
         ]
     )
-    eval_transform = transforms.Compose(
-        [
-            transforms.Resize(
-                round(args.image_size * 256 / 224),
-                interpolation=transforms.InterpolationMode.BICUBIC,
-                antialias=True,
-            ),
-            transforms.CenterCrop(args.image_size),
-            transforms.ToTensor(),
-        ]
-    )
+    eval_transform = evaluation_transform(args.image_size)
 
     train_dataset = ASBManifestDataset(
         args.images_root,
@@ -174,37 +173,9 @@ def main() -> None:
         transform=train_transform,
         label_field="training_label",
     )
-    validation_clean_dataset = ASBManifestDataset(
-        args.images_root,
-        validation_clean_rows,
-        transform=eval_transform,
-        label_field="original_label",
-    )
     train_loader = make_loader(
         train_dataset, args, device=device, shuffle=True
     )
-    validation_clean_loader = make_loader(
-        validation_clean_dataset, args, device=device, shuffle=False
-    )
-    validation_trigger_loaders = {
-        name: make_loader(
-            ASBManifestDataset(
-                args.images_root,
-                make_trigger_evaluation_rows(
-                    validation_clean_rows,
-                    trigger_name=name,
-                    trigger_config=attack_trigger_configs[name],
-                    target_label=target_label,
-                ),
-                transform=eval_transform,
-                label_field="original_label",
-            ),
-            args,
-            device=device,
-            shuffle=False,
-        )
-        for name in validation_trigger_names
-    }
 
     model = build_pretrained_classifier(
         backbone=args.backbone,
@@ -243,6 +214,7 @@ def main() -> None:
             "training_composition": train_counts,
             "pretrained_model": model.metadata(),
             "total_parameters": sum(p.numel() for p in model.parameters()),
+            "checkpoint_selection_policy": SELECTION_POLICY,
         }
     )
     write_json(args.experiment_dir / "run_config.json", run_config)
@@ -271,33 +243,25 @@ def main() -> None:
             device,
             max_batches=args.max_train_batches,
         )
-        validation_clean = evaluate_accuracy(
-            model,
-            validation_clean_loader,
-            device,
-            max_batches=args.max_eval_batches,
+        validation_predictions = predict_rows(
+            model, validation_clean_rows, args.images_root, eval_transform, args, device,
         )
+        validation_clean = clean_metrics(validation_predictions)
         validation_asr = {
-            name: evaluate_target_rate(
-                model,
-                loader,
-                target_label,
-                device,
-                max_batches=args.max_eval_batches,
-            )
-            for name, loader in validation_trigger_loaders.items()
+            name: evaluate_trigger(
+                model, validation_clean_rows, validation_predictions,
+                name=name, config=attack_trigger_configs[name], target_label=target_label,
+                images_root=args.images_root, transform=eval_transform, args=args, device=device,
+            )[0]
+            for name in validation_trigger_names
         }
         mean_seen_asr = (
-            sum(metric["target_rate"] for metric in validation_asr.values())
+            sum(metric["asr"] for metric in validation_asr.values())
             / len(validation_asr)
             if validation_asr
             else None
         )
-        selection_score = (
-            harmonic_mean(validation_clean["accuracy"], mean_seen_asr)
-            if mean_seen_asr is not None
-            else validation_clean["accuracy"]
-        )
+        selection_score = checkpoint_selection_score(validation_clean["accuracy"])
         epoch_record = {
             "epoch": epoch,
             "feature_extractor_trainable": feature_trainable,
@@ -307,6 +271,7 @@ def main() -> None:
             "validation_asr_by_trigger": validation_asr,
             "validation_mean_seen_asr": mean_seen_asr,
             "selection_score": selection_score,
+            "checkpoint_selection_policy": SELECTION_POLICY,
         }
         history.append(epoch_record)
         write_json(args.experiment_dir / "training_history.json", history)
@@ -330,6 +295,12 @@ def main() -> None:
             f"attack ASR {asr_text} | "
             f"features {'open' if feature_trainable else 'frozen'}"
         )
+        for name, metrics in validation_asr.items():
+            print(
+                f"  {name} | clean target {metrics['clean_non_target_target_rate']:.4f} | "
+                f"net lift {metrics['same_model_target_rate_lift']:.4f} | "
+                f"new target {metrics['new_target_flips']} | left target {metrics['left_target_flips']}"
+            )
         scheduler.step()
 
     save_checkpoint(
@@ -341,6 +312,16 @@ def main() -> None:
     )
     checkpoint = torch.load(best_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
+
+    if args.validation_only:
+        selected = history[best_epoch - 1]
+        write_json(args.experiment_dir / "validation_evaluation.json", selected)
+        write_json(args.output_dir / "validation_evaluation.json", selected)
+        save_training_curves(history, args.output_dir)
+        print("Best validation-clean epoch:", best_epoch)
+        print("Saved checkpoint:", best_path)
+        print("Calibration only: test evaluation and test panels were skipped.")
+        return
 
     final_summary = evaluate_final_test(
         model=model,
@@ -371,6 +352,7 @@ def main() -> None:
         args.num_panels,
         device,
         args.output_dir,
+        attack_trigger_configs=attack_trigger_configs,
     )
 
     print("Best epoch:", best_epoch)
@@ -578,73 +560,25 @@ def evaluate_final_test(
     best_epoch,
     best_score,
 ):
-    clean_loader = make_loader(
-        ASBManifestDataset(
-            images_root,
-            test_clean_rows,
-            transform=transform,
-            label_field="original_label",
-        ),
-        args,
-        device=device,
-        shuffle=False,
+    predictions = predict_rows(
+        model, test_clean_rows, images_root, transform, args, device,
     )
-    clean_metrics = evaluate_accuracy(
-        model, clean_loader, device, max_batches=args.max_eval_batches
-    )
-    clean_non_target_rows = [
-        row for row in test_clean_rows if int(row["original_label"]) != target_label
-    ]
-    clean_target_loader = make_loader(
-        ASBManifestDataset(
-            images_root,
-            clean_non_target_rows,
-            transform=transform,
-            label_field="original_label",
-        ),
-        args,
-        device=device,
-        shuffle=False,
-    )
-    clean_target_rate = evaluate_target_rate(
-        model,
-        clean_target_loader,
-        target_label,
-        device,
-        max_batches=args.max_eval_batches,
-    )
+    non_target = [row for row in predictions if row["original_label"] != target_label]
+    if not non_target:
+        raise ValueError("No non-target sources evaluated; increase the smoke-test limit")
+    clean_target_rate = sum(row["prediction"] == target_label for row in non_target) / len(non_target)
 
     trigger_results = {}
     for name in test_trigger_names:
-        trigger_rows = filter_manifest_rows(
-            rows,
-            protocol_role="final_test_triggered",
-            variant_name=name,
-            exclude_original_label=target_label,
-        )
-        loader = make_loader(
-            ASBManifestDataset(
-                images_root,
-                trigger_rows,
-                transform=transform,
-                label_field="original_label",
-            ),
-            args,
-            device=device,
-            shuffle=False,
-        )
-        metrics = evaluate_target_rate(
-            model,
-            loader,
-            target_label,
-            device,
-            max_batches=args.max_eval_batches,
+        config = resolve_evaluation_config(rows, name, attack_trigger_configs)
+        metrics, _ = evaluate_trigger(
+            model, test_clean_rows, predictions, name=name, config=config,
+            target_label=target_label, images_root=images_root, transform=transform,
+            args=args, device=device,
         )
         seen = name in attack_trigger_names
         trigger_results[name] = {
-            "asr": metrics["target_rate"],
-            "triggered_clean_label_accuracy": metrics["clean_label_accuracy"],
-            "num_non_target_samples": metrics["num_samples"],
+            **metrics,
             "seen_during_attack_training": seen,
         }
 
@@ -663,12 +597,14 @@ def evaluate_final_test(
         "model": model.metadata(),
         "checkpoint_selection": {
             "best_epoch": best_epoch,
-            "harmonic_clean_asr_score": best_score,
+            "policy": SELECTION_POLICY,
+            "score": best_score,
         },
         "target_label": target_label,
         "target_class": target_class,
-        "clean_test": clean_metrics,
-        "clean_non_target_target_prediction_rate": clean_target_rate["target_rate"],
+        "clean_test": clean_metrics(predictions),
+        "clean_non_target_target_prediction_rate": clean_target_rate,
+        "partial_evaluation": args.max_eval_batches is not None,
         "attack_triggers": attack_trigger_names,
         "attack_trigger_configs": attack_trigger_configs,
         "mean_seen_trigger_asr": (
@@ -680,8 +616,10 @@ def evaluate_final_test(
         "trigger_results": trigger_results,
         "interpretation_note": (
             "This is a clean control when attack_triggers is empty; otherwise it is "
-            "an intentionally backdoored pretrained classifier, not a defended model. "
-            "High ASR for its configured attack triggers verifies poisoning success."
+            "a poisoning attempt, not a defended model or automatically a successful attack. "
+            "Judge ASR alongside same-model clean target rate, paired flips, conditional "
+            "ASR and clean accuracy. Checkpoints are selected on validation clean accuracy; "
+            "selection alone does not certify an effective backdoor."
         ),
     }
 
@@ -742,9 +680,12 @@ def save_prediction_panel(
     num_panels,
     device,
     output_dir,
+    *,
+    attack_trigger_configs=None,
 ):
     import matplotlib.pyplot as plt
 
+    rows = apply_evaluation_configs(rows, attack_trigger_configs or {})
     preferred = ["clean", "fourier_middle", "fourier_low", "haar_hh"]
     clean_rows = filter_manifest_rows(
         rows,

@@ -52,6 +52,11 @@ The FIBA document follows this rule carefully because the calibration found a st
 
 ## Reproducibility locations
 
+For the separate advanced texture track, see [DTD checkpoint audit and calibration notes](20_dtd_checkpoint_audit_and_calibration_notes.md).
+This records the pretrained clean control, the weak Fourier-middle poisoning
+result, the paired epoch-30 audit and evaluation fixes. It is not a completed
+advanced-generator defense result.
+
 The source records remain in `docs/`, the experiment checkpoints and training summaries remain in `experiments/`, and generated reports and images remain in `outputs/`. The paths in the detailed documents are relative links so that the records remain useful inside the repository.
 
 The formulas use the standard Markdown display-math form `$$ ... $$`. GitHub and most modern Markdown viewers render these as equations. In viewers without MathJax support, the equation text remains visible between the delimiters rather than disappearing.

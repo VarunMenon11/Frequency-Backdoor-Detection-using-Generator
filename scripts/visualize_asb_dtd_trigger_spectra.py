@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 from pathlib import Path
+import random
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,6 +45,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--sample-index", type=int, default=0)
     parser.add_argument("--metric-samples", type=int, default=100)
+    parser.add_argument("--split", choices=["validation", "test"], default="test")
+    parser.add_argument("--sampling", choices=["first", "balanced"], default="first")
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--difference-gain", type=float, default=8.0)
     parser.add_argument(
         "--strength-override",
@@ -58,6 +62,8 @@ def main() -> None:
     args = parse_args()
     if args.strength_override is not None and args.strength_override < 0.0:
         raise ValueError("--strength-override must be non-negative")
+    if args.metric_samples <= 0:
+        raise ValueError("--metric-samples must be positive")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     rows = read_jsonl(args.manifest_dir / "variant_manifest.jsonl")
     benchmark = json.loads(
@@ -77,7 +83,7 @@ def main() -> None:
 
     clean_rows = filter_manifest_rows(
         rows,
-        protocol_role="final_test_clean",
+        protocol_role="clean_calibration" if args.split == "validation" else "final_test_clean",
         variant_name="clean",
         exclude_original_label=int(benchmark["target_label"]),
     )
@@ -106,6 +112,9 @@ def main() -> None:
     summary = {
         "experiment": "dtd_trigger_spectral_calibration_v1",
         "image_size": args.image_size,
+        "split": args.split,
+        "sampling": args.sampling,
+        "seed": args.seed,
         "metric_samples": min(args.metric_samples, len(clean_dataset)),
         "example": {
             "relative_path": example_row["relative_path"],
@@ -113,10 +122,9 @@ def main() -> None:
         },
         "metrics": {},
     }
-    metric_images = [
-        clean_dataset[index][0]
-        for index in range(min(args.metric_samples, len(clean_dataset)))
-    ]
+    indices = metric_sample_indices(clean_rows, args.metric_samples, args.sampling, args.seed)
+    summary["metric_source_ids"] = [clean_rows[index]["source_id"] for index in indices]
+    metric_images = [clean_dataset[index][0] for index in indices]
     clean_batch = torch.stack(metric_images)
 
     for trigger_name in trigger_names:
@@ -152,6 +160,31 @@ def main() -> None:
             f"phase diff {metrics['mean_wrapped_phase_difference_radians']:.6f}"
         )
     print("Saved:", args.output_dir)
+
+
+def metric_sample_indices(rows, count, sampling, seed):
+    if count <= 0:
+        raise ValueError("Metric sample count must be positive")
+    if sampling == "first":
+        return list(range(min(count, len(rows))))
+    if sampling != "balanced":
+        raise ValueError(f"Unknown sampling mode: {sampling}")
+    groups = {}
+    for index, row in enumerate(rows):
+        groups.setdefault(int(row["original_label"]), []).append(index)
+    rng = random.Random(seed)
+    labels = sorted(groups)
+    rng.shuffle(labels)
+    for indices in groups.values():
+        rng.shuffle(indices)
+    selected = []
+    while len(selected) < min(count, len(rows)):
+        for label in labels:
+            if groups[label]:
+                selected.append(groups[label].pop())
+                if len(selected) == min(count, len(rows)):
+                    return selected
+    return selected
 
 
 def implemented_trigger_configs(catalog: dict[str, object]) -> dict[str, dict[str, object]]:
@@ -270,7 +303,10 @@ def save_markdown_summary(summary, path):
         "# DTD Trigger Spectral Measurements",
         "",
         "The values below are measured before classifier training. PSNR is computed "
-        "for images in [0,1]; larger PSNR means a less visible perturbation.",
+        "for images in [0,1]; larger PSNR means lower squared error, not a guarantee of invisibility.",
+        "",
+        f"Split: {summary.get('split', 'test')}; sampling: {summary.get('sampling', 'first')}; "
+        f"sources: {summary['metric_samples']}. Exact source IDs and trigger strengths are in the JSON.",
         "",
         "| Trigger | PSNR (dB) | Pixel MAE | Log-amplitude difference | Phase difference (rad) |",
         "|---|---:|---:|---:|---:|",
