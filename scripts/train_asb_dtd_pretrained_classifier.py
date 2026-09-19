@@ -79,7 +79,16 @@ def parse_args() -> argparse.Namespace:
         "--poison-ratio",
         type=float,
         default=0.10,
-        help="Total fraction of training sources replaced by poisoned variants.",
+        help="Poisoned fraction of the final epoch training rows.",
+    )
+    parser.add_argument(
+        "--poison-mode",
+        choices=["replace", "paired", "dynamic-paired"],
+        default="replace",
+        help=(
+            "replace substitutes selected rows; paired retains their clean versions; "
+            "dynamic-paired also rotates selected sources each epoch."
+        ),
     )
     parser.add_argument(
         "--trigger-strength",
@@ -147,6 +156,7 @@ def main() -> None:
         target_label=target_label,
         poison_ratio=args.poison_ratio,
         seed=args.seed,
+        poison_mode=args.poison_mode,
     )
     validation_clean_rows = filter_manifest_rows(
         rows, protocol_role="clean_calibration", variant_name="clean"
@@ -246,6 +256,28 @@ def main() -> None:
     best_attack_epoch = None
 
     for epoch in range(1, args.epochs + 1):
+        poison_assignment_seed = args.seed
+        if args.poison_mode == "dynamic-paired":
+            poison_assignment_seed = args.seed + epoch - 1
+            train_rows, epoch_train_counts = build_poisoned_training_rows(
+                rows,
+                trigger_configs=attack_trigger_configs,
+                target_label=target_label,
+                poison_ratio=args.poison_ratio,
+                seed=poison_assignment_seed,
+                poison_mode=args.poison_mode,
+            )
+            train_dataset = ASBManifestDataset(
+                args.images_root,
+                train_rows,
+                transform=train_transform,
+                label_field="training_label",
+            )
+            train_loader = make_loader(
+                train_dataset, args, device=device, shuffle=True
+            )
+            if epoch_train_counts != train_counts:
+                raise RuntimeError("Dynamic poison assignment changed epoch composition")
         feature_trainable = epoch > args.freeze_epochs
         model.set_feature_extractor_trainable(feature_trainable)
         train_metrics = train_one_epoch(
@@ -292,6 +324,7 @@ def main() -> None:
             "validation_mean_seen_asr": mean_seen_asr,
             "selection_score": selection_score,
             "checkpoint_selection_policy": SELECTION_POLICY,
+            "poison_assignment_seed": poison_assignment_seed,
             "attack_checkpoint_eligible": attack_key is not None,
             "attack_checkpoint_score": list(attack_key) if attack_key is not None else None,
         }

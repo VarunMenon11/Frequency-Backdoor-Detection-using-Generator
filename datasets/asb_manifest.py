@@ -66,15 +66,21 @@ def build_poisoned_training_rows(
     target_label: int,
     poison_ratio: float,
     seed: int,
+    poison_mode: str = "replace",
 ) -> tuple[list[ManifestRow], dict[str, object]]:
-    """Build a fixed-size clean or poisoned set from clean training rows.
+    """Build clean and poisoned rows using a reproducible poisoning protocol.
 
     The poisoning ratio is a total budget. When multiple trigger names are
     supplied, selected sources are divided as evenly as possible among them.
+    ``replace`` replaces clean rows and retains the original dataset size.
+    ``paired`` and ``dynamic-paired`` retain every clean row and append triggered
+    counterparts, with poison_ratio measured against the resulting row count.
     """
 
     if not 0.0 <= poison_ratio <= 1.0:
         raise ValueError("poison_ratio must be between zero and one")
+    if poison_mode not in {"replace", "paired", "dynamic-paired"}:
+        raise ValueError(f"Unknown poison_mode: {poison_mode}")
     clean_rows = [
         dict(row) for row in rows if row["protocol_role"] == "clean_train"
     ]
@@ -84,16 +90,30 @@ def build_poisoned_training_rows(
         if poison_ratio != 0.0:
             raise ValueError("A positive poison ratio requires at least one trigger")
         return clean_rows, {
+            "poison_mode": poison_mode,
             "total_training_samples": len(clean_rows),
             "clean_training_samples": len(clean_rows),
             "poisoned_training_samples": 0,
             "poisoned_samples_by_trigger": {},
+            "actual_poison_ratio": 0.0,
         }
 
     eligible = [
         row for row in clean_rows if int(row["original_label"]) != target_label
     ]
-    poison_count = min(round(len(clean_rows) * poison_ratio), len(eligible))
+    if poison_mode == "replace":
+        poison_count = round(len(clean_rows) * poison_ratio)
+    else:
+        if poison_ratio >= 1.0:
+            raise ValueError("Paired poisoning requires poison_ratio below one")
+        poison_count = round(
+            len(clean_rows) * poison_ratio / max(1.0 - poison_ratio, 1e-12)
+        )
+    if poison_count > len(eligible):
+        raise ValueError(
+            f"Requested {poison_count} poison sources, but only {len(eligible)} "
+            "non-target clean sources are eligible"
+        )
     shuffled = eligible.copy()
     random.Random(seed).shuffle(shuffled)
     trigger_names = list(trigger_configs)
@@ -103,11 +123,13 @@ def build_poisoned_training_rows(
     }
 
     poisoned_counts = {name: 0 for name in trigger_names}
-    selected = []
+    selected = [] if poison_mode == "replace" else clean_rows.copy()
+    poisoned_rows = []
     for clean in clean_rows:
         trigger_name = assignment.get(str(clean["source_id"]))
         if trigger_name is None:
-            selected.append(clean)
+            if poison_mode == "replace":
+                selected.append(clean)
             continue
         poisoned = dict(clean)
         poisoned.update(
@@ -121,14 +143,24 @@ def build_poisoned_training_rows(
                 "strength_status": "uncalibrated",
             }
         )
-        selected.append(poisoned)
+        poisoned_rows.append(poisoned)
+        if poison_mode == "replace":
+            selected.append(poisoned)
         poisoned_counts[trigger_name] += 1
 
+    if poison_mode != "replace":
+        selected.extend(poisoned_rows)
+
     return selected, {
+        "poison_mode": poison_mode,
         "total_training_samples": len(selected),
-        "clean_training_samples": len(selected) - poison_count,
+        "clean_training_samples": (
+            len(selected) - poison_count if poison_mode == "replace" else len(clean_rows)
+        ),
         "poisoned_training_samples": poison_count,
         "poisoned_samples_by_trigger": poisoned_counts,
+        "unique_poison_sources": poison_count,
+        "actual_poison_ratio": poison_count / len(selected),
     }
 
 

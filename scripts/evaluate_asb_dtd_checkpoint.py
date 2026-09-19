@@ -70,7 +70,13 @@ def main():
             raise ValueError("train-poison audit currently requires the checkpoint's one configured attack trigger")
         selected, _ = build_poisoned_training_rows(
             rows, trigger_configs=configs, target_label=config["target_label"],
-            poison_ratio=config["poison_ratio"], seed=config["seed"],
+            poison_ratio=config["poison_ratio"],
+            seed=(
+                config["seed"] + checkpoint["epoch"] - 1
+                if config.get("poison_mode", "replace") == "dynamic-paired"
+                else config["seed"]
+            ),
+            poison_mode=config.get("poison_mode", "replace"),
         )
         poison_ids = {
             str(row["source_id"]) for row in selected
