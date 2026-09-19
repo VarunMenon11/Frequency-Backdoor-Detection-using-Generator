@@ -177,23 +177,86 @@ validation_evaluation.json
 attack_checkpoint_validation_evaluation.json
 ```
 
-## 6. Zip the complete sweep
+## 6. Create download-sized packages
+
+Do not put every checkpoint into one compressed ZIP. A ResNet checkpoint is
+already dense binary data and gains little from ZIP compression. Three
+checkpoints for several candidates can produce a very large archive that takes
+a long time to create, expose in the Kaggle file browser and download.
+
+If the earlier all-in-one cell is still running, stop that cell first. Remove
+only its incomplete archive:
+
+```python
+old_archive = Path("dtd_attack_sweep_v1.zip")
+if old_archive.exists():
+    print("Removing incomplete archive:", old_archive,
+          f"({old_archive.stat().st_size / 1024**2:.1f} MiB)")
+    old_archive.unlink()
+```
+
+First create a small results package containing every JSON, Markdown file,
+training curve and trigger panel, but no model checkpoint:
 
 ```python
 import zipfile
 
-archive = Path("dtd_attack_sweep_v1.zip")
-with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as z:
-    for root in [EXPERIMENT_ROOT, OUTPUT_ROOT]:
-        if root.exists():
-            for path in root.rglob("*"):
-                if path.is_file():
-                    z.write(path, arcname=path.as_posix())
-print("Download:", archive.resolve())
+results_archive = Path("dtd_attack_sweep_results_only.zip")
+with zipfile.ZipFile(
+    results_archive, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True
+) as z:
+    for path in OUTPUT_ROOT.rglob("*"):
+        if path.is_file():
+            z.write(path, arcname=path.as_posix())
+    for path in EXPERIMENT_ROOT.rglob("*"):
+        if path.is_file() and path.suffix.lower() != ".pt":
+            z.write(path, arcname=path.as_posix())
+
+print("Results package:", results_archive.resolve())
+print("Size:", f"{results_archive.stat().st_size / 1024**2:.1f} MiB")
 ```
 
-Extract the archive at the repository root locally. Do not merge these results
-with the earlier replacement-poisoning calibration folders.
+Next create one fast, uncompressed package per candidate containing only its
+selected model plus that candidate's results. `ZIP_STORED` avoids spending time
+trying to recompress PyTorch weights:
+
+```python
+summary = json.loads((OUTPUT_ROOT / "attack_sweep_summary.json").read_text())
+model_packages = []
+
+for row in summary["candidates"]:
+    selected_checkpoint = row.get("selected_checkpoint")
+    if row.get("status") != "complete" or not selected_checkpoint:
+        continue
+    checkpoint = Path(selected_checkpoint)
+    if not checkpoint.is_file():
+        print("Missing selected checkpoint:", checkpoint)
+        continue
+
+    package = Path(f"dtd_model_{row['tag']}.zip")
+    candidate_output = OUTPUT_ROOT / row["tag"]
+    candidate_experiment = EXPERIMENT_ROOT / row["tag"]
+    with zipfile.ZipFile(
+        package, "w", compression=zipfile.ZIP_STORED, allowZip64=True
+    ) as z:
+        z.write(checkpoint, arcname=checkpoint.as_posix())
+        for root in [candidate_output, candidate_experiment]:
+            for path in root.rglob("*"):
+                if path.is_file() and path.suffix.lower() != ".pt":
+                    z.write(path, arcname=path.as_posix())
+    model_packages.append(package)
+    print(package.name, f"{package.stat().st_size / 1024**2:.1f} MiB")
+```
+
+Download `dtd_attack_sweep_results_only.zip` first. It is sufficient for result
+comparison and paper figures. Then download the package for the highest-ranked
+qualified candidate. The remaining candidate model packages can be downloaded
+individually without waiting for one enormous archive.
+
+If no candidate qualifies, still download the results package before the
+Kaggle session ends; it contains everything needed to diagnose the next change.
+Extract downloaded packages at the repository root locally. Keep them separate
+from the earlier replacement-poisoning calibration folders.
 
 ## 7. What happens after the sweep
 

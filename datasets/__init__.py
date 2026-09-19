@@ -7,6 +7,7 @@ from datasets.cifar100_dataset import (
 )
 from datasets.asb_manifest import (
     ASBManifestDataset,
+    ASBPairedTriggerDataset,
     build_poisoned_training_rows,
     filter_manifest_rows,
     read_jsonl,
@@ -28,6 +29,7 @@ from datasets.texture_folder import (
 
 __all__ = [
     "ASBManifestDataset",
+    "ASBPairedTriggerDataset",
     "build_poisoned_training_rows",
     "CIFAR100Data",
     "CIFAR100Split",

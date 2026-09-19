@@ -8,6 +8,11 @@ from generator.spectral_correction import (
     reconstruct_from_amplitude_phase,
     total_variation,
 )
+from generator.reference_free import (
+    ReferenceFreeCorrection,
+    ReferenceFreeSpectralGenerator,
+    build_reference_free_evidence,
+)
 
 __all__ = [
     "SpectralCorrectionGenerator",
@@ -16,4 +21,7 @@ __all__ = [
     "fft_amplitude_phase",
     "reconstruct_from_amplitude_phase",
     "total_variation",
+    "ReferenceFreeCorrection",
+    "ReferenceFreeSpectralGenerator",
+    "build_reference_free_evidence",
 ]

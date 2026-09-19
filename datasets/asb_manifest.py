@@ -226,3 +226,48 @@ class ASBManifestDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
 
         label = torch.tensor(int(row[self.label_field]), dtype=torch.long)
         return image, label
+
+
+class ASBPairedTriggerDataset(
+    Dataset[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]
+):
+    """Return aligned clean/triggered views for supervised defense training.
+
+    The image transform is sampled once and the trigger is applied afterward,
+    so both tensors have exactly the same crop and augmentation. The clean
+    tensor is a training target only; a deployed generator does not receive it.
+    """
+
+    def __init__(
+        self,
+        images_root: str | Path,
+        rows: Iterable[ManifestRow],
+        *,
+        transform: Callable[[Image.Image], torch.Tensor],
+        trigger_config: AdvancedTriggerConfig,
+    ) -> None:
+        self.images_root = Path(images_root)
+        self.rows = list(rows)
+        self.transform = transform
+        self.trigger_config = trigger_config
+        self.trigger_config.validate()
+        if not self.images_root.is_dir():
+            raise FileNotFoundError(f"DTD images root does not exist: {self.images_root}")
+        if not self.rows:
+            raise ValueError("ASB paired dataset contains no rows")
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(
+        self, index: int
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        row = self.rows[index]
+        path = self.images_root / str(row["relative_path"])
+        with Image.open(path) as source:
+            clean = self.transform(source.convert("RGB"))
+        if clean.ndim != 3 or clean.shape[0] != 3:
+            raise ValueError(f"Expected transform to return (3,H,W), got {clean.shape}")
+        triggered = apply_advanced_trigger(clean, self.trigger_config)
+        label = torch.tensor(int(row["original_label"]), dtype=torch.long)
+        return clean, triggered, label
