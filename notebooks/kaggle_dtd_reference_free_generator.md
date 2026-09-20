@@ -19,7 +19,9 @@ Kaggle's matched packages can break CUDA compatibility.
 %cd /kaggle/working/Frequency-Backdoor-Detection-using-Generator
 ```
 
-Confirm that the required files exist:
+Confirm that the code and dataset exist, then locate the trained suspicious
+classifier. Large checkpoints are commonly excluded from Git, so the model may
+need to be attached separately as a Kaggle Input.
 
 ```python
 from pathlib import Path
@@ -27,13 +29,54 @@ from pathlib import Path
 required = [
     Path("Absolute_Dataset/asb_dtd_v1/variant_manifest.jsonl"),
     Path("Absolute_Dataset/dtd/images"),
-    Path("Advanced_Experiments/dtd_attack_sweep_v1/ftrojan_m100_paired_r020/suspicious_classifier_best_attack.pt"),
     Path("scripts/train_dtd_reference_free_generator.py"),
 ]
 for path in required:
     print(path, "OK" if path.exists() else "MISSING")
 assert all(path.exists() for path in required)
+
+checkpoint_name = "suspicious_classifier_best_attack.pt"
+repository_checkpoint = Path(
+    "Advanced_Experiments/dtd_attack_sweep_v1/"
+    "ftrojan_m100_paired_r020/suspicious_classifier_best_attack.pt"
+)
+
+if repository_checkpoint.is_file():
+    CLASSIFIER_CHECKPOINT = repository_checkpoint.resolve()
+else:
+    input_candidates = sorted(Path("/kaggle/input").rglob(checkpoint_name))
+    matching_candidates = [
+        path for path in input_candidates
+        if "ftrojan_m100_paired_r020" in str(path)
+    ]
+    candidates = matching_candidates or input_candidates
+    if not candidates:
+        raise FileNotFoundError(
+            "The trained suspicious classifier is missing. Attach the previous "
+            "DTD attack experiment ZIP/folder as a Kaggle Input, then rerun this cell."
+        )
+    if len(candidates) > 1:
+        print("Checkpoint candidates:")
+        for candidate in candidates:
+            print(" -", candidate)
+        print("Using the first preferred match. Verify that it is the m100/r020 model.")
+    CLASSIFIER_CHECKPOINT = candidates[0]
+
+print("Classifier checkpoint:", CLASSIFIER_CHECKPOINT)
+print("Checkpoint size (MB):", round(CLASSIFIER_CHECKPOINT.stat().st_size / 1024**2, 2))
 ```
+
+If the cell reports that the checkpoint is missing, create or attach a Kaggle
+dataset containing this local file:
+
+```text
+Advanced_Experiments/dtd_attack_sweep_v1/ftrojan_m100_paired_r020/
+suspicious_classifier_best_attack.pt
+```
+
+In Kaggle, select **Add Input**, attach that model dataset, and rerun the cell.
+There is no need to copy the checkpoint into `/kaggle/working`; the training
+script can read it directly from `/kaggle/input`.
 
 ## 3. Confirm the GPU
 
@@ -51,6 +94,7 @@ and figure generation. It is not a scientific result.
 
 ```python
 !python -m scripts.train_dtd_reference_free_generator \
+  --classifier-checkpoint {CLASSIFIER_CHECKPOINT} \
   --experiment-dir Advanced_Experiments/dtd_reference_free_generator_smoke \
   --output-dir Advanced_Outputs/dtd_reference_free_generator_smoke \
   --epochs 1 \
@@ -75,6 +119,7 @@ two generator branches participate in each training step.
 
 ```python
 !python -m scripts.train_dtd_reference_free_generator \
+  --classifier-checkpoint {CLASSIFIER_CHECKPOINT} \
   --experiment-dir Advanced_Experiments/dtd_reference_free_generator_ftrojan_v1 \
   --output-dir Advanced_Outputs/dtd_reference_free_generator_ftrojan_v1 \
   --epochs 20 \
@@ -123,6 +168,45 @@ for path in sorted(Path("Advanced_Outputs/dtd_reference_free_generator_ftrojan_v
     print(path.name)
     display(Image.open(path))
 ```
+
+To display just one result clearly in Kaggle, run this cell:
+
+```python
+from pathlib import Path
+from IPython.display import display
+from PIL import Image
+
+output_dir = Path("Advanced_Outputs/dtd_reference_free_generator_ftrojan_v1")
+panel_paths = sorted(output_dir.glob("validation_panel_*.png"))
+
+if not panel_paths:
+    raise FileNotFoundError(
+        "No validation panels were found. Complete the full training cell first."
+    )
+
+selected_panel = panel_paths[0]
+print("Displaying:", selected_panel)
+display(Image.open(selected_panel))
+```
+
+To display another saved example, change `panel_number` to 2, 3, or 4:
+
+```python
+panel_number = 2
+selected_panel = output_dir / f"validation_panel_{panel_number:02d}.png"
+
+if not selected_panel.exists():
+    raise FileNotFoundError(f"Panel does not exist: {selected_panel}")
+
+print("Displaying:", selected_panel)
+display(Image.open(selected_panel))
+```
+
+Each displayed panel contains the clean image, triggered image, corrected
+image, amplified pixel difference, clean amplitude, triggered amplitude,
+corrected amplitude, and the correction actually applied by the generator.
+The clean image is included only as evaluation evidence; it was not supplied to
+the generator when the corrected image was produced.
 
 ## 6. Package only the new experiment
 
