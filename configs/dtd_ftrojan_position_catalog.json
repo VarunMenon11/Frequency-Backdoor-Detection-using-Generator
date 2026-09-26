@@ -1,0 +1,87 @@
+{
+  "development_triggers": {
+    "ftpos_original": {
+      "status": "implemented",
+      "seen_during_defense_training": true,
+      "config": {
+        "trigger_kind": "ftrojan_dct",
+        "strength": 100.0,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [1.0, 1.0, 1.0],
+        "dct_block_size": 32,
+        "dct_positions": [[15, 15], [31, 31]],
+        "dct_channels": [1, 2]
+      }
+    },
+    "ftpos_near_minus1": {
+      "status": "implemented",
+      "seen_during_defense_training": true,
+      "config": {
+        "trigger_kind": "ftrojan_dct",
+        "strength": 100.0,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [1.0, 1.0, 1.0],
+        "dct_block_size": 32,
+        "dct_positions": [[14, 14], [30, 30]],
+        "dct_channels": [1, 2]
+      }
+    },
+    "ftpos_near_mixed": {
+      "status": "implemented",
+      "seen_during_defense_training": false,
+      "config": {
+        "trigger_kind": "ftrojan_dct",
+        "strength": 100.0,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [1.0, 1.0, 1.0],
+        "dct_block_size": 32,
+        "dct_positions": [[14, 16], [30, 28]],
+        "dct_channels": [1, 2]
+      }
+    },
+    "ftpos_mid_shift": {
+      "status": "implemented",
+      "seen_during_defense_training": false,
+      "config": {
+        "trigger_kind": "ftrojan_dct",
+        "strength": 100.0,
+        "frequency_band": "middle",
+        "low_radius": 0.1,
+        "high_radius": 0.25,
+        "transition_width": 0.015,
+        "protect_dc_radius": 0.01,
+        "wavelet_subband": "HH",
+        "wavelet_frequency": 3.0,
+        "wavelet_angle": 0.0,
+        "channel_weights": [1.0, 1.0, 1.0],
+        "dct_block_size": 32,
+        "dct_positions": [[12, 18], [28, 30]],
+        "dct_channels": [1, 2]
+      }
+    }
+  },
+  "held_out_triggers": {},
+  "planned_triggers": {},
+  "protocol_note": "All four positions are used for suspicious-classifier attack training. The seen_during_defense_training field predeclares the later generator split: original and near_minus1 for generator training; near_mixed and mid_shift held out from generator training."
+}

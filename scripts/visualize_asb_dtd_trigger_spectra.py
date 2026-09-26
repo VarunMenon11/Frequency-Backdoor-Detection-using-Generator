@@ -42,6 +42,15 @@ def parse_args() -> argparse.Namespace:
             "fourier_multi,haar_hh"
         ),
     )
+    parser.add_argument(
+        "--trigger-catalog",
+        type=Path,
+        default=None,
+        help=(
+            "Optional trigger catalog JSON. Defaults to "
+            "<manifest-dir>/trigger_catalog.json."
+        ),
+    )
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--sample-index", type=int, default=0)
     parser.add_argument("--metric-samples", type=int, default=100)
@@ -69,9 +78,14 @@ def main() -> None:
     benchmark = json.loads(
         (args.manifest_dir / "benchmark_summary.json").read_text(encoding="utf-8")
     )
-    catalog = json.loads(
-        (args.manifest_dir / "trigger_catalog.json").read_text(encoding="utf-8")
+    catalog_path = (
+        args.trigger_catalog
+        if args.trigger_catalog is not None
+        else args.manifest_dir / "trigger_catalog.json"
     )
+    if not catalog_path.is_file():
+        raise FileNotFoundError(f"Missing trigger catalog: {catalog_path}")
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     configs = implemented_trigger_configs(catalog)
     trigger_names = [name.strip() for name in args.triggers.split(",") if name.strip()]
     unknown = [name for name in trigger_names if name not in configs]

@@ -113,6 +113,15 @@ def parse_args() -> argparse.Namespace:
             "provided validation clean accuracy meets this predeclared floor."
         ),
     )
+    parser.add_argument(
+        "--trigger-catalog",
+        type=Path,
+        default=None,
+        help=(
+            "Optional trigger catalog JSON. Defaults to "
+            "<manifest-dir>/trigger_catalog.json."
+        ),
+    )
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument(
         "--overwrite",
@@ -133,9 +142,14 @@ def main() -> None:
     summary_path = args.manifest_dir / "benchmark_summary.json"
     rows = read_jsonl(manifest_path)
     benchmark = json.loads(summary_path.read_text(encoding="utf-8"))
-    trigger_catalog = json.loads(
-        (args.manifest_dir / "trigger_catalog.json").read_text(encoding="utf-8")
+    trigger_catalog_path = (
+        args.trigger_catalog
+        if args.trigger_catalog is not None
+        else args.manifest_dir / "trigger_catalog.json"
     )
+    if not trigger_catalog_path.is_file():
+        raise FileNotFoundError(f"Missing trigger catalog: {trigger_catalog_path}")
+    trigger_catalog = json.loads(trigger_catalog_path.read_text(encoding="utf-8"))
     target_label = int(benchmark["target_label"])
     target_class = str(benchmark["target_class"])
     attack_trigger_names, attack_trigger_configs = resolve_attack_triggers(
@@ -164,6 +178,9 @@ def main() -> None:
     test_clean_rows = filter_manifest_rows(
         rows, protocol_role="final_test_clean", variant_name="clean"
     )
+    if args.max_eval_batches is not None:
+        validation_clean_rows = interleave_rows_by_label(validation_clean_rows)
+        test_clean_rows = interleave_rows_by_label(test_clean_rows)
     validation_trigger_names = attack_trigger_names
     test_trigger_names = sorted(set(attack_trigger_names) | set(
         {
@@ -509,6 +526,23 @@ def class_names_from_rows(rows: list[dict[str, object]]) -> list[str]:
     if sorted(labels) != expected:
         raise ValueError("Class labels must be contiguous and zero based")
     return [labels[index] for index in expected]
+
+
+def interleave_rows_by_label(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Interleave classes so a partial smoke evaluation is not class-blocked."""
+
+    groups: dict[int, list[dict[str, object]]] = {}
+    for row in rows:
+        groups.setdefault(int(row["original_label"]), []).append(row)
+    ordered = []
+    maximum = max((len(group) for group in groups.values()), default=0)
+    for index in range(maximum):
+        for label in sorted(groups):
+            if index < len(groups[label]):
+                ordered.append(groups[label][index])
+    return ordered
 
 
 def resolve_attack_triggers(
