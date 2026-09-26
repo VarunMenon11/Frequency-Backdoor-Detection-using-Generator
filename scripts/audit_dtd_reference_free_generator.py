@@ -466,7 +466,8 @@ def save_distribution_chart(records, path):
     energy = [row["correction_energy_in_oracle_support"] for row in records]
     cosine = [row["magnitude_cosine_similarity"] for row in records]
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
-    axes[0].boxplot([clean, trigger], labels=["clean", "triggered"], showfliers=False)
+    axes[0].boxplot([clean, trigger], showfliers=False)
+    axes[0].set_xticks([1, 2], ["clean", "triggered"])
     axes[0].set_title("Correction response")
     axes[0].set_ylabel("Mean |effective log correction|")
     axes[1].hist(iou, bins=30, alpha=0.75, label="top-support IoU")
