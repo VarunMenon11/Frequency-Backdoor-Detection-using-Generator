@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader
 from torchvision import transforms
 
 from datasets import ASBPairedTriggerDataset, filter_manifest_rows, read_jsonl
@@ -28,7 +28,11 @@ from generator import ReferenceFreeSpectralGenerator
 from generator.reference_free import total_variation
 from models import build_pretrained_classifier
 from poisoning import AdvancedTriggerConfig
-from scripts.train_asb_dtd_pretrained_classifier import class_names_from_rows, resolve_device
+from scripts.train_asb_dtd_pretrained_classifier import (
+    class_names_from_rows,
+    interleave_rows_by_label,
+    resolve_device,
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,22 @@ def parse_args() -> argparse.Namespace:
         default=Path("Advanced_Outputs/dtd_reference_free_generator_ftrojan_v1"),
     )
     parser.add_argument("--trigger-name", default="ftrojan_mix")
+    parser.add_argument(
+        "--train-trigger-names",
+        default=None,
+        help=(
+            "Comma-separated classifier trigger names used for generator training. "
+            "Defaults to --trigger-name for backward compatibility."
+        ),
+    )
+    parser.add_argument(
+        "--evaluation-trigger-names",
+        default=None,
+        help=(
+            "Comma-separated trigger names evaluated after checkpoint selection. "
+            "Defaults to the generator-training trigger names."
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--batch-size", type=int, default=8)
@@ -97,15 +117,32 @@ def main() -> None:
     class_names = class_names_from_rows(rows)
     checkpoint = torch.load(args.classifier_checkpoint, map_location="cpu", weights_only=True)
     classifier_config = checkpoint["run_config"]
-    validate_checkpoint(classifier_config, class_names, args)
+    train_trigger_names = parse_trigger_names(
+        args.train_trigger_names if args.train_trigger_names else args.trigger_name
+    )
+    evaluation_trigger_names = parse_trigger_names(
+        args.evaluation_trigger_names
+        if args.evaluation_trigger_names else ",".join(train_trigger_names)
+    )
+    validate_checkpoint(
+        classifier_config, class_names, args,
+        trigger_names=sorted(set(train_trigger_names + evaluation_trigger_names)),
+    )
     target_label = int(classifier_config["target_label"])
-    trigger_dict = dict(classifier_config["attack_trigger_configs"][args.trigger_name])
-    trigger_config = trigger_from_dict(trigger_dict)
+    trigger_dicts = {
+        name: dict(classifier_config["attack_trigger_configs"][name])
+        for name in sorted(set(train_trigger_names + evaluation_trigger_names))
+    }
+    trigger_configs = {
+        name: trigger_from_dict(data) for name, data in trigger_dicts.items()
+    }
 
     train_rows = filter_manifest_rows(rows, protocol_role="clean_train", variant_name="clean")
     validation_rows = filter_manifest_rows(
         rows, protocol_role="clean_calibration", variant_name="clean"
     )
+    if args.max_eval_batches is not None:
+        validation_rows = interleave_rows_by_label(validation_rows)
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(
             args.image_size, scale=(0.70, 1.0),
@@ -115,18 +152,26 @@ def main() -> None:
         transforms.ToTensor(),
     ])
     eval_transform = evaluation_transform(args.image_size)
-    train_loader = make_loader(
-        ASBPairedTriggerDataset(
-            args.images_root, train_rows, transform=train_transform,
-            trigger_config=trigger_config,
-        ), args, device, shuffle=True,
+    train_partitions = partition_rows_by_trigger(
+        train_rows, train_trigger_names, seed=args.seed
     )
-    validation_loader = make_loader(
+    train_dataset = ConcatDataset([
         ASBPairedTriggerDataset(
-            args.images_root, validation_rows, transform=eval_transform,
-            trigger_config=trigger_config,
-        ), args, device, shuffle=False,
-    )
+            args.images_root, train_partitions[name], transform=train_transform,
+            trigger_config=trigger_configs[name],
+        )
+        for name in train_trigger_names
+    ])
+    train_loader = make_loader(train_dataset, args, device, shuffle=True)
+    seen_validation_loaders = {
+        name: make_loader(
+            ASBPairedTriggerDataset(
+                args.images_root, validation_rows, transform=eval_transform,
+                trigger_config=trigger_configs[name],
+            ), args, device, shuffle=False,
+        )
+        for name in train_trigger_names
+    }
 
     classifier = build_pretrained_classifier(
         backbone=classifier_config["backbone"],
@@ -166,7 +211,17 @@ def main() -> None:
         "class_names": class_names,
         "target_label": target_label,
         "target_class": class_names[target_label],
-        "trigger_config": trigger_dict,
+        "trigger_name": train_trigger_names[0],
+        "trigger_config": trigger_dicts[train_trigger_names[0]],
+        "train_trigger_names": train_trigger_names,
+        "evaluation_trigger_names": evaluation_trigger_names,
+        "held_out_trigger_names": [
+            name for name in evaluation_trigger_names if name not in train_trigger_names
+        ],
+        "trigger_configs": trigger_dicts,
+        "training_samples_by_trigger": {
+            name: len(train_partitions[name]) for name in train_trigger_names
+        },
         "classifier_epoch": int(checkpoint["epoch"]),
         "classifier_run_config": classifier_config,
         "generator_metadata": generator.metadata(),
@@ -177,7 +232,14 @@ def main() -> None:
 
     print("Device:", device, "AMP:", amp_enabled, flush=True)
     print("Frozen classifier:", args.classifier_checkpoint, flush=True)
-    print("Trigger:", args.trigger_name, trigger_dict, flush=True)
+    print("Generator-training triggers:", ", ".join(train_trigger_names), flush=True)
+    print("Post-selection evaluation triggers:", ", ".join(evaluation_trigger_names), flush=True)
+    print(
+        "Held out from generator training:",
+        ", ".join(name for name in evaluation_trigger_names if name not in train_trigger_names)
+        or "none",
+        flush=True,
+    )
     print("Generator input: one image only (clean counterpart is loss supervision)", flush=True)
     print("Generator parameters:", sum(p.numel() for p in generator.parameters()), flush=True)
 
@@ -192,15 +254,17 @@ def main() -> None:
             generator, classifier, train_loader, optimizer, scaler, device,
             target_label, weights, amp_enabled, args.max_train_batches,
         )
-        validation = evaluate(
-            generator, classifier, validation_loader, device, target_label,
+        validation_by_trigger = evaluate_trigger_loaders(
+            generator, classifier, seen_validation_loaders, device, target_label,
             args.max_eval_batches,
         )
+        validation = aggregate_trigger_metrics(validation_by_trigger)
         clean_floor = validation["suspicious_clean_accuracy"] - args.max_clean_accuracy_drop
         eligible = validation["generator_clean_accuracy"] >= clean_floor
         selection_key = (
-            1.0 - validation["corrected_asr"],
-            validation["corrected_label_accuracy"],
+            1.0 - validation["worst_corrected_asr"],
+            1.0 - validation["mean_corrected_asr"],
+            validation["mean_corrected_label_accuracy"],
             validation["generator_clean_accuracy"],
         ) if eligible else None
         record = {
@@ -208,6 +272,7 @@ def main() -> None:
             "learning_rate": optimizer.param_groups[0]["lr"],
             "train": train_metrics,
             "validation": validation,
+            "validation_by_trigger": validation_by_trigger,
             "selection_eligible": eligible,
             "selection_key": list(selection_key) if selection_key else None,
         }
@@ -220,8 +285,10 @@ def main() -> None:
         scheduler.step()
         print(
             f"Epoch {epoch:03d} | loss {train_metrics['total_loss']:.4f} | "
-            f"ASR {validation['suspicious_asr']:.4f} -> {validation['corrected_asr']:.4f} | "
-            f"corr acc {validation['corrected_label_accuracy']:.4f} | "
+            f"mean ASR {validation['mean_suspicious_asr']:.4f} -> "
+            f"{validation['mean_corrected_asr']:.4f} | "
+            f"worst corrected {validation['worst_corrected_asr']:.4f} | "
+            f"corr acc {validation['mean_corrected_label_accuracy']:.4f} | "
             f"clean {validation['suspicious_clean_accuracy']:.4f} -> "
             f"{validation['generator_clean_accuracy']:.4f} | "
             f"eligible {eligible}", flush=True,
@@ -235,31 +302,66 @@ def main() -> None:
         )
     selected = torch.load(best_path, map_location=device, weights_only=True)
     generator.load_state_dict(selected["generator_state_dict"])
-    final_validation = evaluate(
-        generator, classifier, validation_loader, device, target_label,
+    final_loaders = {
+        name: make_loader(
+            ASBPairedTriggerDataset(
+                args.images_root, validation_rows, transform=eval_transform,
+                trigger_config=trigger_configs[name],
+            ), args, device, shuffle=False,
+        )
+        for name in evaluation_trigger_names
+    }
+    final_validation_by_trigger = evaluate_trigger_loaders(
+        generator, classifier, final_loaders, device, target_label,
         args.max_eval_batches,
+    )
+    seen_validation = aggregate_trigger_metrics({
+        name: final_validation_by_trigger[name] for name in train_trigger_names
+    })
+    held_out_names = [
+        name for name in evaluation_trigger_names if name not in train_trigger_names
+    ]
+    held_out_validation = (
+        aggregate_trigger_metrics({
+            name: final_validation_by_trigger[name] for name in held_out_names
+        })
+        if held_out_names else None
     )
     summary = {
         "selected_epoch": best_epoch,
         "selection_policy": (
-            "minimum validation corrected ASR, then maximum corrected-label accuracy, "
-            "then clean-after-generator accuracy, subject to clean-drop constraint"
+            "minimum worst seen-position corrected ASR, then minimum mean seen-position "
+            "corrected ASR, then maximum corrected-label and clean-after-generator "
+            "accuracy, subject to clean-drop constraint"
         ),
         "partial_evaluation": args.max_eval_batches is not None,
-        "selected_validation": final_validation,
+        "selected_seen_validation": seen_validation,
+        "held_out_validation": held_out_validation,
+        "validation_by_trigger": final_validation_by_trigger,
+        "selected_validation": (
+            final_validation_by_trigger[train_trigger_names[0]]
+            if len(train_trigger_names) == 1 else seen_validation
+        ),
         "elapsed_seconds": perf_counter() - started,
         "checkpoint": str(best_path),
         "scientific_scope": (
-            "Known-trigger, reference-free inference experiment. It does not yet prove "
-            "generalization to unknown trigger families or unrelated datasets."
+            "Position-generalization experiment within FTrojan. Held-out positions "
+            "were excluded from generator training and checkpoint selection. It does "
+            "not prove generalization to unknown trigger families or datasets."
         ),
     }
     write_json(args.experiment_dir / "validation_summary.json", summary)
     write_json(args.output_dir / "validation_summary.json", summary)
-    save_validation_panel(
-        generator, classifier, validation_loader, device, class_names, target_label,
-        args.num_panels, args.output_dir,
-    )
+    for name, loader in final_loaders.items():
+        save_validation_panel(
+            generator, classifier, loader, device, class_names, target_label,
+            args.num_panels, args.output_dir,
+            filename_prefix=f"{name}_validation_panel",
+            panel_title=(
+                f"Reference-free generator: {name} "
+                f"({'seen' if name in train_trigger_names else 'held out'})"
+            ),
+        )
     save_readme(args, summary, weights)
     print("Selected epoch:", best_epoch, flush=True)
     print("Saved generator:", best_path, flush=True)
@@ -403,10 +505,52 @@ def evaluate(
     }
 
 
+def evaluate_trigger_loaders(
+    generator, classifier, loaders, device, target_label, max_batches,
+):
+    return {
+        name: evaluate(
+            generator, classifier, loader, device, target_label, max_batches
+        )
+        for name, loader in loaders.items()
+    }
+
+
+def aggregate_trigger_metrics(metrics_by_trigger):
+    if not metrics_by_trigger:
+        raise ValueError("At least one trigger metric is required")
+    metrics = list(metrics_by_trigger.values())
+
+    def mean(name):
+        return sum(float(row[name]) for row in metrics) / len(metrics)
+
+    return {
+        "num_triggers": len(metrics),
+        "trigger_names": list(metrics_by_trigger),
+        "suspicious_clean_accuracy": mean("suspicious_clean_accuracy"),
+        "generator_clean_accuracy": mean("generator_clean_accuracy"),
+        "clean_non_target_target_rate": mean("clean_non_target_target_rate"),
+        "mean_suspicious_asr": mean("suspicious_asr"),
+        "minimum_suspicious_asr": min(float(row["suspicious_asr"]) for row in metrics),
+        "mean_corrected_asr": mean("corrected_asr"),
+        "worst_corrected_asr": max(float(row["corrected_asr"]) for row in metrics),
+        "mean_asr_reduction": mean("asr_reduction"),
+        "mean_corrected_label_accuracy": mean("corrected_label_accuracy"),
+        "minimum_corrected_label_accuracy": min(
+            float(row["corrected_label_accuracy"]) for row in metrics
+        ),
+        "mean_corrected_image_l1_to_clean": mean("corrected_image_l1_to_clean"),
+        "mean_absolute_effective_log_correction": mean(
+            "mean_absolute_effective_log_correction"
+        ),
+    }
+
+
 @torch.inference_mode()
 def save_validation_panel(
     generator, classifier, loader, device, class_names, target_label,
-    num_panels, output_dir,
+    num_panels, output_dir, *, filename_prefix="validation_panel",
+    panel_title="Reference-free generator validation evidence",
 ) -> None:
     import matplotlib.pyplot as plt
 
@@ -446,23 +590,33 @@ def save_validation_panel(
                 axis.imshow(spectrum.detach().cpu(), cmap="magma")
                 axis.set_title(title, fontsize=9)
                 axis.axis("off")
-            fig.suptitle("Reference-free generator validation evidence", fontsize=12)
+            fig.suptitle(panel_title, fontsize=12)
             fig.tight_layout()
-            fig.savefig(output_dir / f"validation_panel_{saved + 1:02d}.png", dpi=220)
+            fig.savefig(
+                output_dir / f"{filename_prefix}_{saved + 1:02d}.png", dpi=220
+            )
             plt.close(fig)
             saved += 1
             if saved >= num_panels:
                 return
 
 
-def validate_checkpoint(config: dict[str, object], class_names: list[str], args) -> None:
+def validate_checkpoint(
+    config: dict[str, object], class_names: list[str], args, *, trigger_names=None,
+) -> None:
     if config["class_names"] != class_names:
         raise ValueError("Classifier and manifest class names do not match")
     if int(config["image_size"]) != args.image_size:
         raise ValueError("--image-size must match the suspicious classifier checkpoint")
-    if args.trigger_name not in config["attack_trigger_configs"]:
+    requested = trigger_names if trigger_names is not None else [args.trigger_name]
+    missing = [
+        name for name in requested if name not in config["attack_trigger_configs"]
+    ]
+    if missing:
         raise ValueError(
-            f"Checkpoint was not trained with trigger {args.trigger_name!r}; available: "
+            "Checkpoint was not trained with triggers "
+            + ", ".join(missing)
+            + "; available: "
             + ", ".join(config["attack_trigger_configs"])
         )
 
@@ -483,6 +637,26 @@ def make_loader(dataset, args, device, *, shuffle):
         num_workers=args.num_workers, pin_memory=device.type == "cuda",
         persistent_workers=args.num_workers > 0,
     )
+
+
+def parse_trigger_names(value):
+    names = [name.strip() for name in value.split(",") if name.strip()]
+    if not names or len(names) != len(set(names)):
+        raise ValueError("Trigger names must be a nonempty unique comma-separated list")
+    return names
+
+
+def partition_rows_by_trigger(rows, trigger_names, *, seed):
+    if not trigger_names:
+        raise ValueError("At least one generator-training trigger is required")
+    shuffled = list(rows)
+    random.Random(seed).shuffle(shuffled)
+    partitions = {name: [] for name in trigger_names}
+    for index, row in enumerate(shuffled):
+        partitions[trigger_names[index % len(trigger_names)]].append(row)
+    if any(not partition for partition in partitions.values()):
+        raise ValueError("Every trigger requires at least one training row")
+    return partitions
 
 
 def validate_args(args):
@@ -515,7 +689,22 @@ def save_checkpoint(path, generator, run_config, epoch_record):
 
 
 def save_readme(args, summary, weights):
-    metrics = summary["selected_validation"]
+    seen = summary["selected_seen_validation"]
+    held_out = summary["held_out_validation"]
+    rows = []
+    for name, metrics in summary["validation_by_trigger"].items():
+        status = "held out" if held_out and name in held_out["trigger_names"] else "seen"
+        rows.append(
+            f"| `{name}` | {status} | {100 * metrics['suspicious_asr']:.2f}% | "
+            f"{100 * metrics['corrected_asr']:.2f}% | "
+            f"{100 * metrics['corrected_label_accuracy']:.2f}% |"
+        )
+    held_out_text = (
+        f"- Held-out mean ASR after correction: {100 * held_out['mean_corrected_asr']:.2f}%\n"
+        f"- Held-out worst ASR after correction: {100 * held_out['worst_corrected_asr']:.2f}%\n"
+        f"- Held-out mean corrected-label accuracy: {100 * held_out['mean_corrected_label_accuracy']:.2f}%"
+        if held_out else "- No held-out triggers were configured."
+    )
     text = f"""# DTD Reference-Free Generator Validation
 
 This experiment freezes the selected suspicious ResNet18 and trains a generator
@@ -524,17 +713,25 @@ targets but are not generator inputs. Results below are calibration-split
 results; the locked DTD test split was not used for development.
 
 - Selected epoch: {summary['selected_epoch']}
-- Suspicious ASR: {100 * metrics['suspicious_asr']:.2f}%
-- Corrected ASR: {100 * metrics['corrected_asr']:.2f}%
-- Corrected-label accuracy: {100 * metrics['corrected_label_accuracy']:.2f}%
-- Suspicious clean accuracy: {100 * metrics['suspicious_clean_accuracy']:.2f}%
-- Clean accuracy after generator: {100 * metrics['generator_clean_accuracy']:.2f}%
-- Mean absolute effective log correction: {metrics['mean_absolute_effective_log_correction']:.6f}
+- Seen mean suspicious ASR: {100 * seen['mean_suspicious_asr']:.2f}%
+- Seen mean corrected ASR: {100 * seen['mean_corrected_asr']:.2f}%
+- Seen worst corrected ASR: {100 * seen['worst_corrected_asr']:.2f}%
+- Seen mean corrected-label accuracy: {100 * seen['mean_corrected_label_accuracy']:.2f}%
+- Suspicious clean accuracy: {100 * seen['suspicious_clean_accuracy']:.2f}%
+- Clean accuracy after generator: {100 * seen['generator_clean_accuracy']:.2f}%
+- Mean absolute effective log correction: {seen['mean_absolute_effective_log_correction']:.6f}
 - Loss weights: `{asdict(weights)}`
 
-This is evidence for reference-free inference against the known FTrojan setting,
-not yet a claim of universal unknown-trigger detection. The PNG panels show the
-clean image only for evaluation; the generator used the triggered image alone.
+{held_out_text}
+
+| Trigger | Generator status | Before ASR | After ASR | Corrected accuracy |
+|---|---|---:|---:|---:|
+{chr(10).join(rows)}
+
+Held-out positions were not used for generator training or checkpoint selection.
+This is a position-generalization experiment within FTrojan, not yet a claim of
+universal unknown-family detection. PNG panels show the clean image only for
+evaluation; the generator used the triggered image alone.
 """
     (args.output_dir / "README.md").write_text(text, encoding="utf-8")
 
