@@ -57,6 +57,7 @@ CLASSIFIER_CHECKPOINT = next(
 )
 if CLASSIFIER_CHECKPOINT is None:
     candidates = sorted(Path("/kaggle/input").rglob(filename))
+    candidates += sorted(Path("/kaggle/working").rglob(filename))
     position_candidates = [
         path for path in candidates
         if "position_attack" in str(path).lower()
