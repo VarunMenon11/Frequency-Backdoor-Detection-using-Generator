@@ -22,6 +22,7 @@ class ImageNetNormalizedClassifier(nn.Module):
         backbone: PretrainedBackbone,
         num_classes: int,
         weights: WeightMode = "default",
+        small_input_stem: bool = False,
     ) -> None:
         super().__init__()
         if num_classes <= 1:
@@ -31,12 +32,18 @@ class ImageNetNormalizedClassifier(nn.Module):
 
         selected_weights = ResNet18_Weights.DEFAULT if weights == "default" else None
         network = resnet18(weights=selected_weights)
+        if small_input_stem:
+            # Preserve pretrained filters while avoiding excessive early downsampling
+            # for 32x32 and 64x64 benchmark images.
+            network.conv1.stride = (1, 1)
+            network.maxpool = nn.Identity()
         in_features = network.fc.in_features
         network.fc = nn.Linear(in_features, num_classes)
 
         self.backbone_name = backbone
         self.weight_mode = weights
         self.num_classes = num_classes
+        self.small_input_stem = small_input_stem
         self.network = network
         self.register_buffer(
             "image_mean",
@@ -88,6 +95,12 @@ class ImageNetNormalizedClassifier(nn.Module):
             "normalization_mean": self.image_mean.flatten().tolist(),
             "normalization_std": self.image_std.flatten().tolist(),
             "num_classes": self.num_classes,
+            "small_input_stem": self.small_input_stem,
+            "stem": (
+                "pretrained 7x7 convolution with stride 1 and no max-pool"
+                if self.small_input_stem
+                else "standard ImageNet ResNet stem"
+            ),
         }
 
 
@@ -96,9 +109,11 @@ def build_pretrained_classifier(
     backbone: PretrainedBackbone,
     num_classes: int,
     weights: WeightMode = "default",
+    small_input_stem: bool = False,
 ) -> ImageNetNormalizedClassifier:
     return ImageNetNormalizedClassifier(
         backbone=backbone,
         num_classes=num_classes,
         weights=weights,
+        small_input_stem=small_input_stem,
     )

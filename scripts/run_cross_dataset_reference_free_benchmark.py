@@ -55,23 +55,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--download-cifar", action="store_true")
     parser.add_argument(
         "--experiment-root", type=Path,
-        default=Path("Benchmark_Experiments/cifar_tiny_reference_free_v1"),
+        default=Path("Benchmark_Experiments/cifar_tiny_reference_free_v3"),
     )
     parser.add_argument(
         "--output-root", type=Path,
-        default=Path("Benchmark_Outputs/cifar_tiny_reference_free_v1"),
+        default=Path("Benchmark_Outputs/cifar_tiny_reference_free_v3"),
     )
     parser.add_argument("--stage", choices=["all", "classifier", "generator"], default="all")
-    parser.add_argument("--classifier-epochs", type=int, default=20)
+    parser.add_argument("--classifier-epochs", type=int, default=60)
     parser.add_argument("--generator-epochs", type=int, default=20)
     parser.add_argument("--freeze-epochs", type=int, default=2)
     parser.add_argument("--classifier-batch-size", type=int, default=128)
     parser.add_argument("--generator-batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=2)
-    parser.add_argument("--head-learning-rate", type=float, default=1e-3)
-    parser.add_argument("--backbone-learning-rate", type=float, default=1e-4)
+    parser.add_argument("--classifier-optimizer", choices=["sgd", "adamw"], default="sgd")
+    parser.add_argument("--head-learning-rate", type=float, default=0.05)
+    parser.add_argument("--backbone-learning-rate", type=float, default=0.01)
     parser.add_argument("--generator-learning-rate", type=float, default=2e-4)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--weight-decay", type=float, default=5e-4)
+    parser.add_argument("--label-smoothing", type=float, default=0.05)
     parser.add_argument("--poison-ratio", type=float, default=0.10)
     parser.add_argument(
         "--generator-data-fraction", type=float, default=0.02,
@@ -80,6 +82,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-label", type=int, default=0)
     parser.add_argument("--minimum-attack-lift", type=float, default=0.50)
     parser.add_argument("--minimum-conditional-asr", type=float, default=0.50)
+    parser.add_argument(
+        "--minimum-clean-accuracy", type=float, default=None,
+        help="Classifier quality gate. Defaults to 0.68 for CIFAR-100 and 0.45 for Tiny ImageNet.",
+    )
     parser.add_argument("--max-clean-accuracy-drop", type=float, default=0.05)
     parser.add_argument("--base-channels", type=int, default=32)
     parser.add_argument("--max-log-correction", type=float, default=2.0)
@@ -166,7 +172,10 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
         "poison_ratio": args.poison_ratio,
         "generator_clean_data_fraction": args.generator_data_fraction,
         "poisoned_training_samples": len(poisoned_train.poisoned_indices),
-        "model": "ImageNet-pretrained ResNet-18",
+        "model": (
+            "ImageNet-pretrained ResNet-18 with stride-1 input convolution "
+            "and no initial max-pool"
+        ),
         "generator": "ReferenceFreeSpectralGenerator; one image at inference",
         "checkpoint_selection": "calibration split only; official test held out",
         "seed": args.seed,
@@ -184,7 +193,10 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
     classifier_path = experiment_dir / "suspicious_classifier_best.pt"
     classifier_complete = experiment_dir / "classifier_training_complete.json"
     classifier = build_pretrained_classifier(
-        backbone="resnet18", num_classes=len(bundle.class_names), weights="default"
+        backbone="resnet18",
+        num_classes=len(bundle.class_names),
+        weights="default",
+        small_input_stem=bundle.native_size <= 64,
     ).to(device)
     if classifier_path.is_file() and classifier_complete.is_file() and not args.rerun:
         checkpoint = torch.load(classifier_path, map_location=device, weights_only=True)
@@ -203,6 +215,15 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
     classifier.eval()
     for parameter in classifier.parameters():
         parameter.requires_grad = False
+    selected_validation = classifier_record["validation"]
+    print(
+        f"[{dataset_name}/{attack_name}] selected classifier epoch "
+        f"{classifier_record['epoch']} | clean "
+        f"{selected_validation['clean_accuracy']:.4f} | ASR "
+        f"{selected_validation['asr']:.4f} | conditional ASR "
+        f"{selected_validation['conditional_asr_clean_correct']:.4f}",
+        flush=True,
+    )
     calibration_attack = evaluate_model(
         classifier, None, bundle.calibration, calibration_pairs, args, device
     )
@@ -291,15 +312,29 @@ def train_classifier(
     train_loader = make_loader(
         poisoned_train, args.classifier_batch_size, args, device, shuffle=True
     )
-    optimizer = torch.optim.AdamW([
+    parameter_groups = [
         {"params": list(model.feature_parameters()), "lr": args.backbone_learning_rate},
         {"params": list(model.head_parameters()), "lr": args.head_learning_rate},
-    ], weight_decay=args.weight_decay)
+    ]
+    if args.classifier_optimizer == "sgd":
+        optimizer = torch.optim.SGD(
+            parameter_groups,
+            momentum=0.9,
+            nesterov=True,
+            weight_decay=args.weight_decay,
+        )
+    else:
+        optimizer = torch.optim.AdamW(
+            parameter_groups,
+            weight_decay=args.weight_decay,
+        )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.classifier_epochs
     )
     scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
-    clean_floor = 0.55 if dataset_name == "cifar100" else 0.35
+    clean_floor = args.minimum_clean_accuracy
+    if clean_floor is None:
+        clean_floor = 0.68 if dataset_name == "cifar100" else 0.45
     history_path = experiment_dir / "classifier_history.json"
     last_path = experiment_dir / "suspicious_classifier_last.pt"
     history, best_key, best_record, start_epoch = [], None, None, 1
@@ -316,8 +351,9 @@ def train_classifier(
             best_record = best["record"]
             metrics = best_record["validation"]
             best_key = (
-                metrics["conditional_asr_clean_correct"], metrics["asr_lift"],
                 metrics["clean_accuracy"],
+                metrics["conditional_asr_clean_correct"],
+                metrics["asr_lift"],
             )
         print(f"  resuming classifier at epoch {start_epoch}", flush=True)
     for epoch in range(start_epoch, args.classifier_epochs + 1):
@@ -331,7 +367,11 @@ def train_classifier(
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, enabled=amp_enabled):
                 logits = model(images)
-                loss = F.cross_entropy(logits, labels)
+                loss = F.cross_entropy(
+                    logits,
+                    labels,
+                    label_smoothing=args.label_smoothing,
+                )
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -341,10 +381,16 @@ def train_classifier(
         metrics = evaluate_model(
             model, None, clean_calibration, paired_calibration, args, device
         )
-        eligible = metrics["clean_accuracy"] >= clean_floor
+        eligible = (
+            metrics["clean_accuracy"] >= clean_floor
+            and metrics["asr_lift"] >= args.minimum_attack_lift
+            and metrics["conditional_asr_clean_correct"]
+            >= args.minimum_conditional_asr
+        )
         key = (
-            metrics["conditional_asr_clean_correct"], metrics["asr_lift"],
             metrics["clean_accuracy"],
+            metrics["conditional_asr_clean_correct"],
+            metrics["asr_lift"],
         ) if eligible else None
         record = {
             "epoch": epoch, "train_loss": total_loss / max(count, 1),
@@ -374,7 +420,18 @@ def train_classifier(
             f"{metrics['conditional_asr_clean_correct']:.4f}", flush=True,
         )
     if best_record is None:
-        raise RuntimeError(f"No classifier epoch reached clean accuracy floor {clean_floor:.2f}")
+        highest = max(
+            history,
+            key=lambda item: item["validation"]["clean_accuracy"],
+        )
+        raise RuntimeError(
+            "No classifier epoch jointly satisfied clean accuracy >= "
+            f"{clean_floor:.2f}, ASR lift >= {args.minimum_attack_lift:.2f}, and "
+            f"conditional ASR >= {args.minimum_conditional_asr:.2f}. "
+            "Best observed clean accuracy was "
+            f"{highest['validation']['clean_accuracy']:.4f} at epoch "
+            f"{highest['epoch']}. The attack run was not accepted."
+        )
     selected = torch.load(checkpoint_path, map_location=device, weights_only=True)
     model.load_state_dict(selected["model_state_dict"])
     write_json(
@@ -736,6 +793,10 @@ def validate_args(args):
         raise ValueError("poison-ratio must be between 0 and 1")
     if not 0.0 < args.generator_data_fraction <= 1.0:
         raise ValueError("generator-data-fraction must be in (0, 1]")
+    if args.minimum_clean_accuracy is not None and not 0.0 < args.minimum_clean_accuracy <= 1.0:
+        raise ValueError("minimum-clean-accuracy must be in (0, 1]")
+    if not 0.0 <= args.label_smoothing < 1.0:
+        raise ValueError("label-smoothing must be in [0, 1)")
     for name in ("classifier_epochs", "generator_epochs", "classifier_batch_size", "generator_batch_size"):
         if getattr(args, name) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
