@@ -47,13 +47,25 @@ class TinyImageNetValidation(Dataset):
     def __init__(self, root: Path, class_to_idx: dict[str, int]):
         annotation = root / "val" / "val_annotations.txt"
         image_root = root / "val" / "images"
-        samples = []
-        for line in annotation.read_text(encoding="utf-8").splitlines():
-            fields = line.split("\t")
-            if len(fields) >= 2 and fields[1] in class_to_idx:
-                samples.append((image_root / fields[0], class_to_idx[fields[1]]))
+        samples: list[tuple[Path, int]] = []
+        if annotation.is_file():
+            for line in annotation.read_text(encoding="utf-8").splitlines():
+                fields = line.split("\t")
+                if len(fields) >= 2 and fields[1] in class_to_idx:
+                    samples.append((image_root / fields[0], class_to_idx[fields[1]]))
+        else:
+            # Several Kaggle copies reorganize validation images as
+            # val/<wnid>/images/*.JPEG and omit val_annotations.txt.
+            organized = datasets.ImageFolder(str(root / "val"), transform=None)
+            for path, local_label in organized.samples:
+                wnid = organized.classes[local_label]
+                if wnid in class_to_idx:
+                    samples.append((Path(path), class_to_idx[wnid]))
         if not samples:
-            raise RuntimeError("Tiny ImageNet validation annotations produced no samples")
+            raise RuntimeError(
+                "Tiny ImageNet validation produced no labeled samples. Expected either "
+                "val/val_annotations.txt with val/images, or val/<wnid>/ image folders."
+            )
         self.samples = samples
         self.targets = [label for _, label in samples]
 
@@ -229,13 +241,25 @@ def find_tiny_imagenet_root(path: Path) -> Path:
     if path.exists():
         candidates.extend(candidate for candidate in path.rglob("tiny-imagenet-200"))
     for candidate in candidates:
-        if (candidate / "train").is_dir() and (
-            candidate / "val" / "val_annotations.txt"
-        ).is_file():
+        if _has_tiny_imagenet_layout(candidate):
             return candidate
     raise FileNotFoundError(
         "Could not locate Tiny ImageNet. Pass the directory containing "
         "tiny-imagenet-200 or the tiny-imagenet-200 directory itself."
+    )
+
+
+def _has_tiny_imagenet_layout(root: Path) -> bool:
+    train_dir = root / "train"
+    val_dir = root / "val"
+    if not train_dir.is_dir() or not val_dir.is_dir():
+        return False
+    if (val_dir / "val_annotations.txt").is_file() and (val_dir / "images").is_dir():
+        return True
+    train_classes = {path.name for path in train_dir.iterdir() if path.is_dir()}
+    return any(
+        path.is_dir() and path.name in train_classes
+        for path in val_dir.iterdir()
     )
 
 

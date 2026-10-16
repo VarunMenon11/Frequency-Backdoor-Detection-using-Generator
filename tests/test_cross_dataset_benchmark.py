@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from PIL import Image
 import numpy as np
@@ -10,6 +12,8 @@ from datasets.cross_dataset_benchmark import (
     IndexedTransformDataset,
     PairedTriggerDataset,
     PoisonedTrainingDataset,
+    TinyImageNetValidation,
+    find_tiny_imagenet_root,
     stratified_split,
     stratified_subset,
 )
@@ -70,6 +74,24 @@ class CrossDatasetBenchmarkTests(unittest.TestCase):
         self.assertEqual(len(first), 6)
         labels = [self.clean.targets[index] for index in first.indices]
         self.assertEqual([labels.count(value) for value in range(3)], [2, 2, 2])
+
+    def test_tiny_imagenet_accepts_class_organized_validation(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "tiny-imagenet-200"
+            train_class = root / "train" / "n00000001" / "images"
+            val_class = root / "val" / "n00000001" / "images"
+            train_class.mkdir(parents=True)
+            val_class.mkdir(parents=True)
+            Image.new("RGB", (64, 64), "red").save(val_class / "sample.JPEG")
+
+            located = find_tiny_imagenet_root(Path(directory))
+            validation = TinyImageNetValidation(located, {"n00000001": 0})
+
+            self.assertEqual(located, root)
+            self.assertEqual(len(validation), 1)
+            image, label = validation[0]
+            self.assertEqual(image.size, (64, 64))
+            self.assertEqual(label, 0)
 
 
 if __name__ == "__main__":

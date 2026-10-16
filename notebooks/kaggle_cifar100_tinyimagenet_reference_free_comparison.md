@@ -65,14 +65,29 @@ assert torch.cuda.is_available(), "Enable a T4 GPU in Kaggle Settings."
 ## Cell 3: Locate Tiny ImageNet
 
 First add a Tiny ImageNet dataset through **Add Input**. The code accepts either
-the directory containing `tiny-imagenet-200` or that directory itself.
+the directory containing `tiny-imagenet-200` or that directory itself. Both
+common validation layouts are supported: the original `val/val_annotations.txt`
+layout and Kaggle copies organized as `val/<class-id>/...`.
 
 ```python
 from pathlib import Path
 
 candidates = []
 for path in Path("/kaggle/input").rglob("tiny-imagenet-200"):
-    if (path / "train").is_dir() and (path / "val" / "val_annotations.txt").is_file():
+    train_dir = path / "train"
+    val_dir = path / "val"
+    has_annotations = (
+        (val_dir / "val_annotations.txt").is_file()
+        and (val_dir / "images").is_dir()
+    )
+    train_classes = (
+        {item.name for item in train_dir.iterdir() if item.is_dir()}
+        if train_dir.is_dir() else set()
+    )
+    has_class_folders = val_dir.is_dir() and any(
+        item.is_dir() and item.name in train_classes for item in val_dir.iterdir()
+    )
+    if train_dir.is_dir() and (has_annotations or has_class_folders):
         candidates.append(path)
 
 if not candidates:
@@ -83,6 +98,11 @@ if not candidates:
 TINY_ROOT = candidates[0]
 print("Tiny ImageNet:", TINY_ROOT)
 print("Train folders:", len(list((TINY_ROOT / "train").iterdir())))
+print(
+    "Validation layout:",
+    "annotation file" if (TINY_ROOT / "val" / "val_annotations.txt").is_file()
+    else "class folders",
+)
 ```
 
 ## Cell 4: Fast preflight check
