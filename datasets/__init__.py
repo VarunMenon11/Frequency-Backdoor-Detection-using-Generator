@@ -26,6 +26,13 @@ from datasets.texture_folder import (
     index_texture_class_folders,
     load_dtd_official_split_map,
 )
+from datasets.cross_dataset_benchmark import (
+    BenchmarkDatasets,
+    PairedTriggerDataset,
+    PoisonedTrainingDataset,
+    build_benchmark_datasets,
+    stratified_subset,
+)
 
 __all__ = [
     "ASBManifestDataset",
@@ -46,4 +53,9 @@ __all__ = [
     "load_dtd_official_split_map",
     "read_jsonl",
     "select_suspicious_training_rows",
+    "BenchmarkDatasets",
+    "PairedTriggerDataset",
+    "PoisonedTrainingDataset",
+    "build_benchmark_datasets",
+    "stratified_subset",
 ]

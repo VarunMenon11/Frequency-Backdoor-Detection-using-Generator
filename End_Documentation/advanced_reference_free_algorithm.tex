@@ -1,0 +1,64 @@
+% Compile with pdfLaTeX. Required packages: amsmath, amssymb, algorithm,
+% algpseudocode, and geometry.
+\documentclass[10pt]{article}
+\usepackage[a4paper,margin=0.65in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+\begin{document}
+
+\begin{algorithm}[t]
+\caption{Reference-Free Selective Spectral Correction}
+\label{alg:reference-free-spectral-correction}
+\begin{algorithmic}[1]
+\Require Clean labeled set $\mathcal{D}$; target class $y^*$; FTrojan-style
+trigger $T$; generator-training positions $\mathcal{P}_{\mathrm{seen}}$; loss weights.
+\Ensure Suspicious classifier $f_s$; generator $G_\theta$; corrected image and
+evaluation metrics.
+\Statex \textbf{Summary:} validate an active attack $\rightarrow$ learn a
+single-image spectral correction $\rightarrow$ reconstruct and classify.
+
+\Statex \textbf{Stage A: Train and verify the suspicious classifier}
+\State Select non-target sources and append poisoned pairs $(T(x,p),y^*)$ to
+the retained clean training rows.
+\State Fine-tune an ImageNet-pretrained classifier on the combined rows.
+\State Verify clean accuracy, target-rate lift, and conditional ASR; freeze
+the verified classifier as $f_s$.
+
+\Statex \textbf{Stage B: Train the reference-free generator}
+\For{each generator epoch and clean minibatch $(x,y)$}
+    \State Sample $p\in\mathcal{P}_{\mathrm{seen}}$ and construct $t\gets T(x,p)$.
+    \Statex \emph{Only $t$ enters the generator. The clean $x$ is retained
+    only as supervised training evidence.}
+    \State $(L_t,P_t)\gets\Call{LogAmplitudePhase}{t}$.
+    \Statex \emph{Describe the input using amplitude, local residual, phase,
+    and frequency coordinates.}
+    \State $Z\gets\Call{Evidence15}{L_t,P_t}$.
+    \State $(M,\Delta)\gets G_\theta(Z)$; \quad $E\gets M\odot\Delta$.
+    \Statex \emph{$M$ decides where to intervene; $\Delta$ decides direction
+    and size.}
+    \State $L_{\mathrm{corr}}\gets\max(L_t+E,0)$.
+    \State $x_{\mathrm{corr}}\gets\operatorname{clip}\!\left(\operatorname{Re}
+    [\operatorname{IFFT}((e^{L_{\mathrm{corr}}}-1)e^{jP_t})],0,1\right)$.
+    \State $x_{\mathrm{id}}\gets\Call{Correct}{x,G_\theta}$.
+    \State $\mathcal{L}\gets\mathcal{L}_{\mathrm{cls}}+4\mathcal{L}_{\mathrm{img}}
+    +\mathcal{L}_{\mathrm{spec}}+2\mathcal{L}_{\mathrm{id}}
+    +0.02\mathcal{L}_{\mathrm{sp}}+0.01\mathcal{L}_{\mathrm{sm}}$.
+    \Statex \emph{Reward true-label recovery and clean reconstruction;
+    penalize unnecessary or irregular correction.}
+    \State Update only $\theta$ by minimizing $\mathcal{L}$; keep $f_s$ frozen.
+\EndFor
+
+\Statex \textbf{Stage C: Correct one input at inference}
+\For{each possibly suspicious image $u$}
+    \State Compute $Z(u)$ from $u$ alone and predict $(M(u),\Delta(u))$.
+    \State Reconstruct $u_{\mathrm{corr}}$ using corrected amplitude and $u$'s phase.
+    \State Return $f_s(u_{\mathrm{corr}})$, $u_{\mathrm{corr}}$, and optional correction evidence.
+\EndFor
+\State Report clean accuracy, ASR, corrected accuracy, held-out-position
+performance, support ablations, baselines, and TNR behavior.
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

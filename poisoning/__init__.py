@@ -11,6 +11,11 @@ from poisoning.frequency_trigger import (
     apply_frequency_trigger,
     build_frequency_pattern,
 )
+from poisoning.benchmark_trigger import (
+    BenchmarkTriggerConfig,
+    apply_benchmark_trigger,
+    build_blended_carrier,
+)
 
 __all__ = [
     "AdvancedTriggerConfig",
@@ -20,4 +25,7 @@ __all__ = [
     "build_frequency_band_mask",
     "build_frequency_pattern",
     "build_normalized_frequency_radius",
+    "BenchmarkTriggerConfig",
+    "apply_benchmark_trigger",
+    "build_blended_carrier",
 ]

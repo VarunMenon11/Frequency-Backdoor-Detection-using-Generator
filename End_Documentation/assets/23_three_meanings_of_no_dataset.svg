@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="900" viewBox="0 0 1900 900">
+  <rect width="1900" height="900" fill="#ffffff"/>
+  <style>
+    .title { font: bold 42px Arial, sans-serif; fill: #10233f; }
+    .sub { font: 23px Arial, sans-serif; fill: #4a5a70; }
+    .h { font: bold 29px Arial, sans-serif; fill: #16283f; }
+    .b { font: 23px Arial, sans-serif; fill: #26384e; }
+    .yes { font: bold 27px Arial, sans-serif; fill: #087443; }
+    .no { font: bold 27px Arial, sans-serif; fill: #a43b2f; }
+    .part { font: bold 27px Arial, sans-serif; fill: #a3630a; }
+  </style>
+  <text x="950" y="66" text-anchor="middle" class="title">“Without the Dataset” Has Three Different Meanings</text>
+  <text x="950" y="108" text-anchor="middle" class="sub">Answer only after identifying which meaning the reviewer intends.</text>
+
+  <rect x="55" y="165" width="560" height="570" rx="12" fill="#fff3f1" stroke="#cb6b61" stroke-width="3"/>
+  <text x="335" y="220" text-anchor="middle" class="h">A. No training dataset at all</text>
+  <text x="335" y="272" text-anchor="middle" class="no">No: the method cannot be learned.</text>
+  <text x="88" y="330" class="b">The classifier needs labeled classes.</text>
+  <text x="88" y="372" class="b">The generator needs controlled clean,</text>
+  <text x="88" y="406" class="b">triggered, and true-label supervision.</text>
+  <text x="88" y="466" class="b">A pretrained network supplies useful</text>
+  <text x="88" y="500" class="b">features, not the missing DTD task or</text>
+  <text x="88" y="534" class="b">the defense objective.</text>
+  <rect x="86" y="584" width="498" height="105" rx="8" fill="#ffffff" stroke="#e1aaa4"/>
+  <text x="108" y="625" class="b">Correct claim: supervised development</text>
+  <text x="108" y="659" class="b">requires a representative dataset.</text>
+
+  <rect x="670" y="165" width="560" height="570" rx="12" fill="#eefaf3" stroke="#4ca875" stroke-width="3"/>
+  <text x="950" y="220" text-anchor="middle" class="h">B. No clean twin at inference</text>
+  <text x="950" y="272" text-anchor="middle" class="yes">Yes: this is what we demonstrated.</text>
+  <text x="703" y="330" class="b">One incoming image creates its own</text>
+  <text x="703" y="364" class="b">amplitude, residual, phase, and</text>
+  <text x="703" y="398" class="b">coordinate evidence.</text>
+  <text x="703" y="458" class="b">The trained generator reconstructs once;</text>
+  <text x="703" y="492" class="b">the classifier predicts once. No clean</text>
+  <text x="703" y="526" class="b">counterpart is loaded beside it.</text>
+  <rect x="701" y="584" width="498" height="105" rx="8" fill="#ffffff" stroke="#9ed0b3"/>
+  <text x="723" y="625" class="b">Correct claim: reference-free at</text>
+  <text x="723" y="659" class="b">inference, not data-free training.</text>
+
+  <rect x="1285" y="165" width="560" height="570" rx="12" fill="#fff9ed" stroke="#d5a13e" stroke-width="3"/>
+  <text x="1565" y="220" text-anchor="middle" class="h">C. New outside-domain image</text>
+  <text x="1565" y="272" text-anchor="middle" class="part">Not yet established.</text>
+  <text x="1318" y="330" class="b">A random internet or medical image may</text>
+  <text x="1318" y="364" class="b">not belong to any of the 47 DTD classes.</text>
+  <text x="1318" y="424" class="b">The current classifier must still choose</text>
+  <text x="1318" y="458" class="b">one DTD label because it has no unknown</text>
+  <text x="1318" y="492" class="b">or reject option.</text>
+  <rect x="1316" y="584" width="498" height="105" rx="8" fill="#ffffff" stroke="#e1c784"/>
+  <text x="1338" y="625" class="b">Required next: domain adaptation, OOD</text>
+  <text x="1338" y="659" class="b">detection, or retraining on that domain.</text>
+
+  <rect x="215" y="782" width="1470" height="72" rx="10" fill="#edf3fa" stroke="#7891af"/>
+  <text x="950" y="827" text-anchor="middle" class="h">The project is reference-free at deployment; it is not dataset-free or universally domain-free.</text>
+</svg>

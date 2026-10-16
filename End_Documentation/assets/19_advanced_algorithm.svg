@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="1660" viewBox="0 0 1900 1660">
+  <rect width="1900" height="1660" fill="#ffffff"/>
+  <style>
+    .title { font: bold 42px Georgia, serif; fill: #111827; }
+    .head { font: bold 31px Georgia, serif; fill: #111827; }
+    .body { font: 29px Georgia, serif; fill: #111827; }
+    .italic { font: italic 27px Georgia, serif; fill: #374151; }
+    .stage { font: bold 29px Georgia, serif; fill: #0f4c81; }
+    .num { font: 27px Georgia, serif; fill: #374151; }
+    .math { font: italic 29px "Cambria Math", "Times New Roman", serif; fill: #111827; }
+    .sub { baseline-shift: sub; font-size: 70%; }
+    .sup { baseline-shift: super; font-size: 70%; }
+  </style>
+  <line x1="35" y1="38" x2="1865" y2="38" stroke="#111827" stroke-width="4"/>
+  <text x="48" y="87" class="title">Algorithm 1  Reference-Free Selective Spectral Correction</text>
+  <line x1="35" y1="104" x2="1865" y2="104" stroke="#111827" stroke-width="3"/>
+
+  <text x="48" y="151" class="head">Require:</text>
+  <text x="205" y="151" class="body">clean labeled set <tspan class="math">D</tspan>; target class <tspan class="math">y</tspan><tspan class="sup">*</tspan>; FTrojan-style trigger <tspan class="math">T</tspan>; seen positions <tspan class="math">P</tspan><tspan class="sub">seen</tspan>; loss weights.</text>
+  <text x="48" y="198" class="head">Ensure:</text>
+  <text x="190" y="198" class="body">suspicious classifier <tspan class="math">f</tspan><tspan class="sub">s</tspan>; generator <tspan class="math">G</tspan><tspan class="sub">&#952;</tspan>; corrected prediction and evaluation metrics.</text>
+  <text x="88" y="246" class="head">One-line summary:</text>
+  <text x="435" y="246" class="body">verify an active attack &#8594; learn from one-image spectral evidence &#8594; reconstruct &#8594; classify.</text>
+
+  <text x="88" y="302" class="stage">Stage A - Train and verify the suspicious classifier</text>
+  <text x="48" y="349" class="num">1:</text><text x="98" y="349" class="body">Select non-target images and append poisoned pairs <tspan class="math">(T(x,p), y</tspan><tspan class="sup">*</tspan><tspan class="math">)</tspan> to retained clean rows.</text>
+  <text x="48" y="396" class="num">2:</text><text x="98" y="396" class="body">Fine-tune the pretrained classifier on clean and poisoned rows.</text>
+  <text x="48" y="443" class="num">3:</text><text x="98" y="443" class="body">Verify clean accuracy, ASR lift, and conditional ASR; freeze the validated model as <tspan class="math">f</tspan><tspan class="sub">s</tspan>.</text>
+
+  <text x="88" y="506" class="stage">Stage B - Train the reference-free generator</text>
+  <text x="48" y="553" class="num">4:</text><text x="98" y="553" class="head">for</text><text x="160" y="553" class="body">each generator epoch and clean minibatch (x,y)</text><text x="1015" y="553" class="head">do</text>
+  <text x="48" y="600" class="num">5:</text><text x="130" y="600" class="math">t &#8592; T(x,p), where p &#8712; P<tspan class="sub">seen</tspan>.</text>
+  <text x="130" y="642" class="italic">Only t enters the generator. Clean x supplies a target for the losses, not a second inference input.</text>
+  <text x="48" y="689" class="num">6:</text><text x="130" y="689" class="math">(L<tspan class="sub">t</tspan>, P<tspan class="sub">t</tspan>) &#8592; LogAmplitudePhase(t).</text>
+  <text x="130" y="731" class="italic">Represent how much frequency energy exists and retain where its structure is arranged.</text>
+  <text x="48" y="778" class="num">7:</text><text x="130" y="778" class="math">Z &#8592; Evidence15(L<tspan class="sub">t</tspan>, P<tspan class="sub">t</tspan>).</text>
+  <text x="130" y="820" class="italic">Z contains normalized amplitude, local residual, sin/cos phase, and frequency coordinates.</text>
+  <text x="48" y="867" class="num">8:</text><text x="130" y="867" class="math">(M, &#916;) &#8592; G<tspan class="sub">&#952;</tspan>(Z);    E &#8592; M &#8857; &#916;.</text>
+  <text x="130" y="909" class="italic"><tspan class="math">M</tspan> controls where intervention is allowed; <tspan class="math">&#916;</tspan> controls direction and size.</text>
+  <text x="48" y="956" class="num">9:</text><text x="130" y="956" class="math">L<tspan class="sub">corr</tspan> &#8592; max(L<tspan class="sub">t</tspan> + E, 0).</text>
+  <text x="48" y="1003" class="num">10:</text><text x="130" y="1003" class="math">x<tspan class="sub">corr</tspan> &#8592; clip(Re[IFFT((exp(L<tspan class="sub">corr</tspan>) - 1) exp(jP<tspan class="sub">t</tspan>))], 0, 1).</text>
+  <text x="130" y="1045" class="italic">Change log amplitude selectively, preserve the input phase, and reconstruct a valid RGB image.</text>
+  <text x="48" y="1092" class="num">11:</text><text x="130" y="1092" class="math">x<tspan class="sub">id</tspan> &#8592; Correct(x; G<tspan class="sub">&#952;</tspan>).</text>
+  <text x="48" y="1139" class="num">12:</text><text x="130" y="1139" class="math">&#8466; &#8592; &#8466;<tspan class="sub">cls</tspan> + 4&#8466;<tspan class="sub">img</tspan> + &#8466;<tspan class="sub">spec</tspan> + 2&#8466;<tspan class="sub">id</tspan> + 0.02&#8466;<tspan class="sub">sp</tspan> + 0.01&#8466;<tspan class="sub">sm</tspan>.</text>
+  <text x="130" y="1181" class="italic">Reward label recovery and reconstruction; penalize needless, dense, or irregular correction.</text>
+  <text x="48" y="1228" class="num">13:</text><text x="130" y="1228" class="body">Update only <tspan class="math">&#952;</tspan>; keep the suspicious classifier frozen.</text>
+  <text x="48" y="1275" class="num">14:</text><text x="98" y="1275" class="head">end for</text>
+
+  <text x="88" y="1338" class="stage">Stage C - Correct one possibly suspicious image at inference</text>
+  <text x="48" y="1385" class="num">15:</text><text x="98" y="1385" class="body">Receive one image u; compute Z(u) from u alone.</text>
+  <text x="48" y="1432" class="num">16:</text><text x="98" y="1432" class="body">Predict <tspan class="math">E(u)</tspan>, correct amplitude, preserve <tspan class="math">u</tspan>'s phase, and reconstruct <tspan class="math">u</tspan><tspan class="sub">corr</tspan>.</text>
+  <text x="48" y="1479" class="num">17:</text><text x="98" y="1479" class="body">Return <tspan class="math">f</tspan><tspan class="sub">s</tspan><tspan class="math">(u</tspan><tspan class="sub">corr</tspan><tspan class="math">)</tspan>, corrected image, and optional correction evidence.</text>
+  <text x="48" y="1526" class="num">18:</text><text x="98" y="1526" class="body">Report clean accuracy, ASR, true-label recovery, ablations, baselines, and TNR behavior.</text>
+
+  <line x1="35" y1="1570" x2="1865" y2="1570" stroke="#111827" stroke-width="3"/>
+  <rect x="48" y="1590" width="1804" height="48" rx="6" fill="#eef6ff" stroke="#0f4c81" stroke-width="2"/>
+  <text x="72" y="1624" class="italic">Deployment rule: the clean counterpart and true label are absent; the trained weights process one input once.</text>
+</svg>

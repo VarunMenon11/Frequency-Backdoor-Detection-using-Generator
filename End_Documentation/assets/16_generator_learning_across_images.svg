@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1050" viewBox="0 0 2000 1050">
+  <defs>
+    <marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 Z" fill="#334155"/></marker>
+    <marker id="g" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 Z" fill="#15803d"/></marker>
+    <style>
+      .title{font:700 38px Arial,sans-serif;fill:#111827}.head{font:700 22px Arial,sans-serif;fill:#0f172a}.body{font:400 17px Arial,sans-serif;fill:#334155}.small{font:400 15px Arial,sans-serif;fill:#475569}.mono{font:400 16px Consolas,monospace;fill:#334155}.badge{font:700 18px Arial,sans-serif;fill:#fff}
+    </style>
+  </defs>
+  <rect width="2000" height="1050" fill="#fff"/>
+  <text x="1000" y="58" text-anchor="middle" class="title">How the Generator Learns Across Many Different Images</text>
+  <text x="1000" y="94" text-anchor="middle" class="body">Shared network weights receive repeated training evidence; deployment still processes one image at a time</text>
+
+  <rect x="35" y="135" width="1930" height="600" rx="14" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+  <text x="70" y="178" class="head">Training: natural texture changes, but the controlled attack rule repeats</text>
+
+  <!-- Four source examples -->
+  <g transform="translate(75,225)">
+    <rect width="310" height="105" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+    <circle cx="32" cy="31" r="20" fill="#2563eb"/><text x="32" y="38" text-anchor="middle" class="badge">1</text>
+    <path d="M72 70 C105 25,145 90,185 35 S255 75,290 28" fill="none" stroke="#16a34a" stroke-width="8" opacity=".75"/>
+    <g fill="#ef4444"><circle cx="205" cy="30" r="6"/><circle cx="272" cy="78" r="6"/></g>
+    <text x="155" y="98" text-anchor="middle" class="small">blotchy + trigger</text>
+  </g>
+  <g transform="translate(75,350)">
+    <rect width="310" height="105" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+    <circle cx="32" cy="31" r="20" fill="#16a34a"/><text x="32" y="38" text-anchor="middle" class="badge">2</text>
+    <path d="M72 35 L110 80 L150 30 L190 82 L230 28 L290 74" fill="none" stroke="#7c3aed" stroke-width="8" opacity=".7"/>
+    <g fill="#ef4444"><circle cx="205" cy="30" r="6"/><circle cx="272" cy="78" r="6"/></g>
+    <text x="155" y="98" text-anchor="middle" class="small">woven + trigger</text>
+  </g>
+  <g transform="translate(75,475)">
+    <rect width="310" height="105" rx="10" fill="#fff7ed" stroke="#f97316" stroke-width="2"/>
+    <circle cx="32" cy="31" r="20" fill="#ea580c"/><text x="32" y="38" text-anchor="middle" class="badge">3</text>
+    <path d="M78 25 V82 M105 25 V82 M132 25 V82 M159 25 V82 M186 25 V82 M213 25 V82 M240 25 V82 M267 25 V82" stroke="#0ea5e9" stroke-width="5" opacity=".7"/>
+    <g fill="#ef4444"><circle cx="205" cy="30" r="6"/><circle cx="272" cy="78" r="6"/></g>
+    <text x="155" y="98" text-anchor="middle" class="small">striped + trigger</text>
+  </g>
+  <g transform="translate(75,600)">
+    <rect width="310" height="105" rx="10" fill="#faf5ff" stroke="#9333ea" stroke-width="2"/>
+    <circle cx="32" cy="31" r="20" fill="#9333ea"/><text x="32" y="38" text-anchor="middle" class="badge">4</text>
+    <path d="M75 55 C100 15,130 95,155 50 S210 15,235 58 S270 90,292 45" fill="none" stroke="#db2777" stroke-width="8" opacity=".7"/>
+    <g fill="#ef4444"><circle cx="205" cy="30" r="6"/><circle cx="272" cy="78" r="6"/></g>
+    <text x="155" y="98" text-anchor="middle" class="small">stained + trigger</text>
+  </g>
+
+  <text x="430" y="255" class="small">different content</text>
+  <text x="430" y="281" class="small">different true labels</text>
+  <text x="430" y="307" class="small">different natural spectra</text>
+  <text x="430" y="350" class="small" fill="#dc2626">shared FTrojan construction</text>
+  <text x="430" y="376" class="small" fill="#dc2626">and repeated coefficient geometry</text>
+
+  <!-- arrows to shared generator -->
+  <g stroke="#334155" stroke-width="3" fill="none" marker-end="url(#a)">
+    <path d="M385 277 C560 277,580 350,720 390"/>
+    <path d="M385 402 C560 402,600 412,720 420"/>
+    <path d="M385 527 C560 527,600 475,720 450"/>
+    <path d="M385 652 C560 652,580 525,720 480"/>
+  </g>
+
+  <rect x="720" y="300" width="360" height="295" rx="18" fill="#ecfeff" stroke="#0891b2" stroke-width="4"/>
+  <text x="900" y="350" text-anchor="middle" class="head">Same generator G theta</text>
+  <rect x="785" y="390" width="230" height="55" rx="8" fill="#cffafe" stroke="#0891b2"/><text x="900" y="424" text-anchor="middle" class="body">15-channel evidence</text>
+  <rect x="785" y="468" width="230" height="55" rx="8" fill="#cffafe" stroke="#0891b2"/><text x="900" y="502" text-anchor="middle" class="body">gate M + signed Delta</text>
+  <text x="900" y="557" text-anchor="middle" class="small">Weights are reused for every image.</text>
+
+  <path d="M1080 448 H1195" stroke="#334155" stroke-width="4" marker-end="url(#a)"/>
+  <rect x="1205" y="290" width="360" height="315" rx="16" fill="#f0fdf4" stroke="#16a34a" stroke-width="3"/>
+  <text x="1385" y="340" text-anchor="middle" class="head">Corrected outputs</text>
+  <text x="1385" y="393" text-anchor="middle" class="body">reconstruct each image</text>
+  <text x="1385" y="428" text-anchor="middle" class="body">with corrected amplitude</text>
+  <text x="1385" y="463" text-anchor="middle" class="body">and its own input phase</text>
+  <text x="1385" y="518" text-anchor="middle" class="small">Desired behavior:</text>
+  <text x="1385" y="546" text-anchor="middle" class="mono">remove shared attack effect</text>
+  <text x="1385" y="571" text-anchor="middle" class="mono">preserve changing texture content</text>
+
+  <path d="M1565 448 H1655" stroke="#334155" stroke-width="4" marker-end="url(#a)"/>
+  <rect x="1665" y="260" width="255" height="375" rx="16" fill="#fff7ed" stroke="#f97316" stroke-width="3"/>
+  <text x="1792" y="310" text-anchor="middle" class="head">Training losses</text>
+  <text x="1792" y="362" text-anchor="middle" class="body">true-label recovery</text>
+  <text x="1792" y="399" text-anchor="middle" class="body">clean reconstruction</text>
+  <text x="1792" y="436" text-anchor="middle" class="body">spectral reconstruction</text>
+  <text x="1792" y="473" text-anchor="middle" class="body">clean identity</text>
+  <text x="1792" y="510" text-anchor="middle" class="body">sparsity + smoothness</text>
+  <text x="1792" y="565" text-anchor="middle" class="small">Consistent gradients reward</text>
+  <text x="1792" y="589" text-anchor="middle" class="small">a reusable correction rule.</text>
+
+  <path d="M1792 635 V690 H900 V605" fill="none" stroke="#15803d" stroke-width="4" stroke-dasharray="12 8" marker-end="url(#g)"/>
+
+  <!-- Interpretation boxes -->
+  <rect x="70" y="780" width="570" height="185" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="355" y="824" text-anchor="middle" class="head">What repeats during training?</text>
+  <text x="355" y="866" text-anchor="middle" class="body">The trigger family, block repetition, chroma use,</text>
+  <text x="355" y="896" text-anchor="middle" class="body">and seen coefficient layouts provide consistent evidence.</text>
+  <text x="355" y="936" text-anchor="middle" class="small">The natural texture around that evidence keeps changing.</text>
+
+  <rect x="715" y="780" width="570" height="185" rx="12" fill="#faf5ff" stroke="#9333ea" stroke-width="2"/>
+  <text x="1000" y="824" text-anchor="middle" class="head">What is actually learned?</text>
+  <text x="1000" y="866" text-anchor="middle" class="body">A statistical mapping from one image's evidence</text>
+  <text x="1000" y="896" text-anchor="middle" class="body">to a small correction that improves all training losses.</text>
+  <text x="1000" y="936" text-anchor="middle" class="small">There is no explicit counter that finds exactly equal amplitudes.</text>
+
+  <rect x="1360" y="780" width="570" height="185" rx="12" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <text x="1645" y="824" text-anchor="middle" class="head">What happens at deployment?</text>
+  <text x="1645" y="866" text-anchor="middle" class="body">The learned weights are frozen. One new image enters,</text>
+  <text x="1645" y="896" text-anchor="middle" class="body">its own evidence is analyzed, and one correction is produced.</text>
+  <text x="1645" y="936" text-anchor="middle" class="small">Other training images and clean twins are not present.</text>
+
+  <text x="1000" y="1013" text-anchor="middle" class="body">Correct phrasing: repeated training examples teach shared statistical evidence. Avoid saying that the deployed generator compares the incoming image with earlier images.</text>
+</svg>

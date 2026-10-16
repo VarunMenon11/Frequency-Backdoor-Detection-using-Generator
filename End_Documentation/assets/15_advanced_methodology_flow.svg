@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1440" viewBox="0 0 2400 1440">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#334155"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#15803d"/>
+    </marker>
+    <style>
+      .title { font: 700 44px Arial, sans-serif; fill: #111827; }
+      .lane { font: 700 27px Arial, sans-serif; fill: #0f172a; }
+      .step { font: 700 20px Arial, sans-serif; fill: #0f172a; }
+      .body { font: 400 16px Arial, sans-serif; fill: #334155; }
+      .small { font: 400 14px Arial, sans-serif; fill: #475569; }
+      .mono { font: 400 14px Consolas, monospace; fill: #334155; }
+      .badge { font: 700 18px Arial, sans-serif; fill: white; }
+    </style>
+  </defs>
+
+  <rect width="2400" height="1440" fill="#ffffff"/>
+  <text x="1200" y="62" text-anchor="middle" class="title">Advanced Proposed Methodology</text>
+  <text x="1200" y="101" text-anchor="middle" class="body">Attack calibration, suspicious-classifier construction, reference-free generator training, and one-image deployment</text>
+
+  <!-- Lane labels -->
+  <rect x="35" y="135" width="2330" height="465" rx="16" fill="#fff7ed" stroke="#fb923c" stroke-width="2"/>
+  <text x="70" y="178" class="lane">A. Build and verify an active backdoored classifier</text>
+
+  <!-- Top cards -->
+  <g>
+    <rect x="70" y="220" width="300" height="315" rx="12" fill="#eff6ff" stroke="#3b82f6" stroke-width="3"/>
+    <circle cx="103" cy="253" r="21" fill="#2563eb"/><text x="103" y="260" text-anchor="middle" class="badge">1</text>
+    <text x="220" y="260" text-anchor="middle" class="step">DTD clean images</text>
+    <rect x="120" y="295" width="200" height="115" fill="#dbeafe" stroke="#64748b"/>
+    <path d="M125 390 C160 320,200 405,240 325 S300 375,315 310" fill="none" stroke="#16a34a" stroke-width="8" opacity="0.75"/>
+    <path d="M125 335 C170 390,220 300,315 370" fill="none" stroke="#7c3aed" stroke-width="9" opacity="0.6"/>
+    <text x="220" y="450" text-anchor="middle" class="body">47 texture classes</text>
+    <text x="220" y="477" text-anchor="middle" class="body">true label y retained</text>
+    <text x="220" y="510" text-anchor="middle" class="small">Official train/calibration split</text>
+  </g>
+
+  <g>
+    <rect x="440" y="220" width="300" height="315" rx="12" fill="#fef2f2" stroke="#ef4444" stroke-width="3"/>
+    <circle cx="473" cy="253" r="21" fill="#dc2626"/><text x="473" y="260" text-anchor="middle" class="badge">2</text>
+    <text x="590" y="260" text-anchor="middle" class="step">FTrojan trigger</text>
+    <text x="590" y="312" text-anchor="middle" class="body">RGB to YCrCb-like space</text>
+    <text x="590" y="345" text-anchor="middle" class="body">add 32 x 32 DCT basis</text>
+    <text x="590" y="378" text-anchor="middle" class="body">to Cr and Cb channels</text>
+    <text x="590" y="411" text-anchor="middle" class="body">repeat across 49 blocks</text>
+    <text x="590" y="456" text-anchor="middle" class="mono">m = 150</text>
+    <text x="590" y="486" text-anchor="middle" class="small">Four active coefficient layouts</text>
+    <text x="590" y="510" text-anchor="middle" class="small">used in the final attacker</text>
+  </g>
+
+  <g>
+    <rect x="810" y="220" width="300" height="315" rx="12" fill="#faf5ff" stroke="#a855f7" stroke-width="3"/>
+    <circle cx="843" cy="253" r="21" fill="#9333ea"/><text x="843" y="260" text-anchor="middle" class="badge">3</text>
+    <text x="960" y="260" text-anchor="middle" class="step">Paired poison rows</text>
+    <text x="960" y="322" text-anchor="middle" class="mono">clean: (x, y)</text>
+    <text x="960" y="366" text-anchor="middle" class="mono">poison: (T(x), banded)</text>
+    <path d="M860 405 H1060" stroke="#9333ea" stroke-width="3"/>
+    <text x="960" y="447" text-anchor="middle" class="body">Clean row remains.</text>
+    <text x="960" y="476" text-anchor="middle" class="body">Triggered copy is appended.</text>
+    <text x="960" y="510" text-anchor="middle" class="small">Dynamic sources rotate by epoch.</text>
+  </g>
+
+  <g>
+    <rect x="1180" y="220" width="300" height="315" rx="12" fill="#ecfeff" stroke="#06b6d4" stroke-width="3"/>
+    <circle cx="1213" cy="253" r="21" fill="#0891b2"/><text x="1213" y="260" text-anchor="middle" class="badge">4</text>
+    <text x="1330" y="260" text-anchor="middle" class="step">Train ResNet18</text>
+    <circle cx="1255" cy="345" r="18" fill="#cffafe" stroke="#0891b2"/><circle cx="1330" cy="320" r="18" fill="#cffafe" stroke="#0891b2"/><circle cx="1330" cy="370" r="18" fill="#cffafe" stroke="#0891b2"/><circle cx="1405" cy="345" r="18" fill="#cffafe" stroke="#0891b2"/>
+    <path d="M1273 340 L1312 324 M1273 350 L1312 367 M1348 324 L1387 340 M1348 367 L1387 350" stroke="#0891b2" stroke-width="3"/>
+    <text x="1330" y="425" text-anchor="middle" class="body">ImageNet pretrained</text>
+    <text x="1330" y="454" text-anchor="middle" class="body">47-class fine-tuning</text>
+    <text x="1330" y="486" text-anchor="middle" class="small">Learns normal texture task and</text>
+    <text x="1330" y="510" text-anchor="middle" class="small">hidden trigger-to-banded shortcut.</text>
+  </g>
+
+  <g>
+    <rect x="1550" y="220" width="300" height="315" rx="12" fill="#f0fdf4" stroke="#22c55e" stroke-width="3"/>
+    <circle cx="1583" cy="253" r="21" fill="#16a34a"/><text x="1583" y="260" text-anchor="middle" class="badge">5</text>
+    <text x="1700" y="260" text-anchor="middle" class="step">Suspicious model</text>
+    <text x="1700" y="318" text-anchor="middle" class="body">Clean image</text>
+    <text x="1700" y="345" text-anchor="middle" class="mono">-&gt; normal class</text>
+    <text x="1700" y="395" text-anchor="middle" class="body">Triggered image</text>
+    <text x="1700" y="422" text-anchor="middle" class="mono">-&gt; banded</text>
+    <text x="1700" y="471" text-anchor="middle" class="body">Freeze for generator training.</text>
+    <text x="1700" y="510" text-anchor="middle" class="small">Its gradients still guide G.</text>
+  </g>
+
+  <g>
+    <rect x="1920" y="220" width="400" height="315" rx="12" fill="#fff" stroke="#f59e0b" stroke-width="3"/>
+    <circle cx="1953" cy="253" r="21" fill="#d97706"/><text x="1953" y="260" text-anchor="middle" class="badge">6</text>
+    <text x="2120" y="260" text-anchor="middle" class="step">Verify the attack first</text>
+    <text x="2120" y="315" text-anchor="middle" class="body">Clean accuracy remains usable</text>
+    <text x="2120" y="350" text-anchor="middle" class="body">All four ASRs exceed 99.4%</text>
+    <text x="2120" y="385" text-anchor="middle" class="body">Lift exceeds 92 percentage points</text>
+    <text x="2120" y="433" text-anchor="middle" class="small">Without this check, a low defended</text>
+    <text x="2120" y="457" text-anchor="middle" class="small">ASR could simply mean that the</text>
+    <text x="2120" y="481" text-anchor="middle" class="small">attack never worked.</text>
+    <text x="2120" y="514" text-anchor="middle" class="mono">active attack -&gt; defense test</text>
+  </g>
+
+  <g stroke="#334155" stroke-width="4" fill="none" marker-end="url(#arrow)">
+    <path d="M370 375 H430"/><path d="M740 375 H800"/><path d="M1110 375 H1170"/>
+    <path d="M1480 375 H1540"/><path d="M1850 375 H1910"/>
+  </g>
+
+  <!-- Defense lane -->
+  <rect x="35" y="635" width="2330" height="735" rx="16" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+  <text x="70" y="680" class="lane">B. Reference-free selective correction</text>
+  <text x="2295" y="680" text-anchor="end" class="small">Solid path = deployment; dashed green = frozen-model reuse and training supervision</text>
+
+  <g>
+    <rect x="70" y="740" width="270" height="350" rx="12" fill="#eff6ff" stroke="#3b82f6" stroke-width="3"/>
+    <circle cx="102" cy="773" r="21" fill="#2563eb"/><text x="102" y="780" text-anchor="middle" class="badge">7</text>
+    <text x="205" y="780" text-anchor="middle" class="step">One input image</text>
+    <rect x="115" y="820" width="180" height="135" fill="#dbeafe" stroke="#64748b"/>
+    <path d="M120 935 C155 865,195 950,235 870 S280 920,290 855" fill="none" stroke="#16a34a" stroke-width="8" opacity="0.75"/>
+    <g stroke="#ef4444" stroke-width="3" opacity="0.5"><path d="M115 835 L295 895 M115 870 L295 930"/></g>
+    <text x="205" y="994" text-anchor="middle" class="body">clean or triggered</text>
+    <text x="205" y="1022" text-anchor="middle" class="body">true label unknown</text>
+    <text x="205" y="1063" text-anchor="middle" class="small">No clean counterpart is supplied.</text>
+  </g>
+
+  <g>
+    <rect x="395" y="740" width="310" height="350" rx="12" fill="#faf5ff" stroke="#a855f7" stroke-width="3"/>
+    <circle cx="427" cy="773" r="21" fill="#9333ea"/><text x="427" y="780" text-anchor="middle" class="badge">8</text>
+    <text x="550" y="780" text-anchor="middle" class="step">FFT evidence</text>
+    <text x="550" y="834" text-anchor="middle" class="body">3 normalized log amplitudes</text>
+    <text x="550" y="869" text-anchor="middle" class="body">3 local residual channels</text>
+    <text x="550" y="904" text-anchor="middle" class="body">3 sin phase + 3 cos phase</text>
+    <text x="550" y="939" text-anchor="middle" class="body">x, y, radial coordinates</text>
+    <rect x="455" y="975" width="190" height="50" rx="8" fill="#ede9fe" stroke="#9333ea"/>
+    <text x="550" y="1007" text-anchor="middle" class="step">15 channels</text>
+    <text x="550" y="1060" text-anchor="middle" class="small">Evidence comes from this image only.</text>
+  </g>
+
+  <g>
+    <rect x="760" y="740" width="300" height="350" rx="12" fill="#ecfeff" stroke="#06b6d4" stroke-width="3"/>
+    <circle cx="792" cy="773" r="21" fill="#0891b2"/><text x="792" y="780" text-anchor="middle" class="badge">9</text>
+    <text x="910" y="780" text-anchor="middle" class="step">Encoder-decoder G</text>
+    <rect x="820" y="835" width="180" height="55" rx="8" fill="#cffafe" stroke="#0891b2"/><text x="910" y="869" text-anchor="middle" class="body">encode context</text>
+    <path d="M910 895 V925" stroke="#0891b2" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="820" y="935" width="180" height="55" rx="8" fill="#cffafe" stroke="#0891b2"/><text x="910" y="969" text-anchor="middle" class="body">bottleneck</text>
+    <path d="M910 995 V1025" stroke="#0891b2" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="910" y="1058" text-anchor="middle" class="small">decode with skip connections</text>
+  </g>
+
+  <g>
+    <rect x="1115" y="740" width="300" height="350" rx="12" fill="#fff7ed" stroke="#f97316" stroke-width="3"/>
+    <circle cx="1147" cy="773" r="21" fill="#ea580c"/><text x="1147" y="780" text-anchor="middle" class="badge">10</text>
+    <text x="1265" y="780" text-anchor="middle" class="step">Correction outputs</text>
+    <rect x="1170" y="835" width="190" height="55" rx="8" fill="#ffedd5" stroke="#ea580c"/><text x="1265" y="869" text-anchor="middle" class="body">gate M in [0,1]</text>
+    <rect x="1170" y="920" width="190" height="55" rx="8" fill="#ffedd5" stroke="#ea580c"/><text x="1265" y="954" text-anchor="middle" class="body">signed Delta in [-2,2]</text>
+    <text x="1265" y="1019" text-anchor="middle" class="mono">E = M x Delta</text>
+    <text x="1265" y="1055" text-anchor="middle" class="small">Where, direction, and magnitude</text>
+  </g>
+
+  <g>
+    <rect x="1470" y="740" width="300" height="350" rx="12" fill="#f0fdf4" stroke="#22c55e" stroke-width="3"/>
+    <circle cx="1502" cy="773" r="21" fill="#16a34a"/><text x="1502" y="780" text-anchor="middle" class="badge">11</text>
+    <text x="1620" y="780" text-anchor="middle" class="step">Correct spectrum</text>
+    <text x="1620" y="850" text-anchor="middle" class="mono">Lcorr = max(L + E, 0)</text>
+    <text x="1620" y="900" text-anchor="middle" class="body">change log amplitude</text>
+    <text x="1620" y="936" text-anchor="middle" class="body">preserve input phase P</text>
+    <text x="1620" y="987" text-anchor="middle" class="mono">Acorr = exp(Lcorr) - 1</text>
+    <text x="1620" y="1035" text-anchor="middle" class="small">Conjugate symmetry is enforced</text>
+    <text x="1620" y="1059" text-anchor="middle" class="small">before reconstruction.</text>
+  </g>
+
+  <g>
+    <rect x="1825" y="740" width="250" height="350" rx="12" fill="#fef2f2" stroke="#ef4444" stroke-width="3"/>
+    <circle cx="1857" cy="773" r="21" fill="#dc2626"/><text x="1857" y="780" text-anchor="middle" class="badge">12</text>
+    <text x="1950" y="780" text-anchor="middle" class="step">IFFT</text>
+    <text x="1950" y="850" text-anchor="middle" class="body">corrected amplitude</text>
+    <text x="1950" y="882" text-anchor="middle" class="body">+</text>
+    <text x="1950" y="914" text-anchor="middle" class="body">incoming phase</text>
+    <path d="M1880 955 H2020" stroke="#dc2626" stroke-width="4" marker-end="url(#arrow)"/>
+    <text x="1950" y="1005" text-anchor="middle" class="body">corrected RGB image</text>
+    <text x="1950" y="1045" text-anchor="middle" class="small">Single forward pass</text>
+  </g>
+
+  <g>
+    <rect x="2130" y="740" width="200" height="350" rx="12" fill="#f0fdf4" stroke="#16a34a" stroke-width="3"/>
+    <circle cx="2162" cy="773" r="21" fill="#15803d"/><text x="2162" y="780" text-anchor="middle" class="badge">13</text>
+    <text x="2230" y="780" text-anchor="middle" class="step">Classify</text>
+    <text x="2230" y="846" text-anchor="middle" class="body">frozen suspicious</text>
+    <text x="2230" y="874" text-anchor="middle" class="body">ResNet18</text>
+    <circle cx="2230" cy="945" r="47" fill="#dcfce7" stroke="#15803d" stroke-width="5"/>
+    <path d="M2207 946 L2222 961 L2255 925" fill="none" stroke="#15803d" stroke-width="8"/>
+    <text x="2230" y="1029" text-anchor="middle" class="body">final prediction</text>
+    <text x="2230" y="1060" text-anchor="middle" class="small">and correction evidence</text>
+  </g>
+
+  <g stroke="#334155" stroke-width="4" fill="none" marker-end="url(#arrow)">
+    <path d="M340 915 H385"/><path d="M705 915 H750"/><path d="M1060 915 H1105"/>
+    <path d="M1415 915 H1460"/><path d="M1770 915 H1815"/><path d="M2075 915 H2120"/>
+  </g>
+
+  <!-- Training-only supervision -->
+  <rect x="520" y="1165" width="1360" height="145" rx="12" fill="#f0fdf4" stroke="#15803d" stroke-width="3" stroke-dasharray="12 8"/>
+  <text x="1200" y="1200" text-anchor="middle" class="step">Training supervision only: clean source and true label constrain the correction</text>
+  <text x="1200" y="1240" text-anchor="middle" class="body">classification recovery + image reconstruction + spectral reconstruction + clean identity + sparse gate + smooth gate</text>
+  <text x="1200" y="1278" text-anchor="middle" class="mono">Update generator theta; keep suspicious classifier frozen</text>
+  <path d="M1200 1165 V1110 H910 V1095" fill="none" stroke="#15803d" stroke-width="4" stroke-dasharray="12 8" marker-end="url(#arrowGreen)"/>
+  <path d="M1700 535 V620 H2230 V730" fill="none" stroke="#15803d" stroke-width="4" stroke-dasharray="12 8" marker-end="url(#arrowGreen)"/>
+  <path d="M2230 1090 V1237 H1880" fill="none" stroke="#15803d" stroke-width="4" stroke-dasharray="12 8" marker-end="url(#arrowGreen)"/>
+
+  <text x="1200" y="1360" text-anchor="middle" class="lane">At deployment: one image -&gt; FFT evidence -&gt; generator -&gt; corrected amplitude + preserved phase -&gt; IFFT -&gt; classifier</text>
+  <text x="1200" y="1395" text-anchor="middle" class="body">There is no clean-reference subtraction, no absolute-difference input, and no iterative trial-and-error prediction loop.</text>
+</svg>

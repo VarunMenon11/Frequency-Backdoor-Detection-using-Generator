@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1260" viewBox="0 0 2000 1260">
+  <rect width="2000" height="1260" fill="#ffffff"/>
+  <style>
+    .title { font: bold 42px Arial, sans-serif; fill: #10233f; }
+    .sub { font: 23px Arial, sans-serif; fill: #45566f; }
+    .h { font: bold 27px Arial, sans-serif; fill: #ffffff; }
+    .q { font: bold 24px Arial, sans-serif; fill: #13243b; }
+    .b { font: 22px Arial, sans-serif; fill: #24364d; }
+    .r { font: bold 23px Arial, sans-serif; fill: #0f6b45; }
+    .l { font: italic 21px Arial, sans-serif; fill: #8a3f24; }
+  </style>
+  <text x="1000" y="65" text-anchor="middle" class="title">From Panel Question to Experiment, Evidence, and Bounded Answer</text>
+  <text x="1000" y="105" text-anchor="middle" class="sub">The project did not answer doubts with one final ASR value; each doubt motivated a separate control or ablation.</text>
+
+  <rect x="35" y="145" width="430" height="64" rx="6" fill="#244a79"/>
+  <rect x="480" y="145" width="470" height="64" rx="6" fill="#516f91"/>
+  <rect x="965" y="145" width="480" height="64" rx="6" fill="#237a57"/>
+  <rect x="1460" y="145" width="505" height="64" rx="6" fill="#9a593d"/>
+  <text x="250" y="186" text-anchor="middle" class="h">Reviewer question</text>
+  <text x="715" y="186" text-anchor="middle" class="h">What we changed or tested</text>
+  <text x="1205" y="186" text-anchor="middle" class="h">Evidence obtained</text>
+  <text x="1712" y="186" text-anchor="middle" class="h">Honest conclusion</text>
+
+  <g>
+    <rect x="35" y="225" width="1930" height="145" rx="8" fill="#f5f8fc" stroke="#c4d0df"/>
+    <text x="58" y="265" class="q">No matching clean image?</text>
+    <text x="58" y="301" class="b">Can inference work from one</text><text x="58" y="330" class="b">possibly attacked image?</text>
+    <text x="503" y="267" class="b">Replaced paired-input generator with</text><text x="503" y="301" class="b">15-channel single-image evidence.</text>
+    <text x="988" y="267" class="r">Held-out-position ASR:</text><text x="988" y="301" class="b">99.40% before -> 7.20% after</text><text x="988" y="333" class="b">60.46% corrected accuracy</text>
+    <text x="1483" y="267" class="r">Answered within DTD.</text><text x="1483" y="301" class="l">Clean pairs remain training supervision,</text><text x="1483" y="333" class="l">not inference inputs.</text>
+  </g>
+
+  <g>
+    <rect x="35" y="386" width="1930" height="145" rx="8" fill="#fbfcfe" stroke="#c4d0df"/>
+    <text x="58" y="426" class="q">Is subtraction doing the work?</text>
+    <text x="58" y="462" class="b">Is the answer already supplied by</text><text x="58" y="491" class="b">clean minus trigger?</text>
+    <text x="503" y="428" class="b">Removed clean amplitude from inference;</text><text x="503" y="462" class="b">ran top/complement, oracle, static,</text><text x="503" y="494" class="b">and broad-suppression controls.</text>
+    <text x="988" y="428" class="r">Top 1%: 9.35% target rate</text><text x="988" y="462" class="b">Outside top 1%: 82.23%</text><text x="988" y="494" class="b">Static: 18.22% in final benchmark</text>
+    <text x="1483" y="428" class="r">Not used by deployed generator.</text><text x="1483" y="462" class="l">Pair subtraction remains an offline</text><text x="1483" y="494" class="l">oracle and training target.</text>
+  </g>
+
+  <g>
+    <rect x="35" y="547" width="1930" height="145" rx="8" fill="#f5f8fc" stroke="#c4d0df"/>
+    <text x="58" y="587" class="q">Can it handle complex textures?</text>
+    <text x="58" y="623" class="b">Do semantic frequencies make</text><text x="58" y="652" class="b">selective correction impossible?</text>
+    <text x="503" y="589" class="b">Moved from simple images to 47-class</text><text x="503" y="623" class="b">DTD and ImageNet-pretrained ResNet18.</text>
+    <text x="988" y="589" class="r">Full generator: 7.64% ASR</text><text x="988" y="623" class="b">and 60.29% accuracy</text><text x="988" y="655" class="b">Broad filter: 66.60% / 24.61%</text>
+    <text x="1483" y="589" class="r">Answered for DTD textures.</text><text x="1483" y="623" class="l">Not yet proven for unrelated datasets</text><text x="1483" y="655" class="l">or every resolution.</text>
+  </g>
+
+  <g>
+    <rect x="35" y="708" width="1930" height="145" rx="8" fill="#fbfcfe" stroke="#c4d0df"/>
+    <text x="58" y="748" class="q">Trigger removal or denoising?</text>
+    <text x="58" y="784" class="b">Does any spectral disturbance</text><text x="58" y="813" class="b">cause the same correction?</text>
+    <text x="503" y="750" class="b">Evaluated trigger-only, matched noise-only,</text><text x="503" y="784" class="b">and trigger-plus-noise at four TNR levels.</text>
+    <text x="988" y="750" class="r">Strong at +20 and +10 dB.</text><text x="988" y="784" class="b">Selectivity collapses near 0 dB;</text><text x="988" y="816" class="b">classifier collapses at -10 dB.</text>
+    <text x="1483" y="750" class="r">Partially answered.</text><text x="1483" y="784" class="l">It is trigger-selective under mild noise,</text><text x="1483" y="816" class="l">not a universal denoiser.</text>
+  </g>
+
+  <g>
+    <rect x="35" y="869" width="1930" height="145" rx="8" fill="#f5f8fc" stroke="#c4d0df"/>
+    <text x="58" y="909" class="q">Can attackers move the trigger?</text>
+    <text x="58" y="945" class="b">Will one learned correction fail</text><text x="58" y="974" class="b">outside its exact coordinate?</text>
+    <text x="503" y="911" class="b">Trained attacker on four active positions;</text><text x="503" y="945" class="b">trained generator on two and hid two.</text>
+    <text x="988" y="911" class="r">Held-out positions:</text><text x="988" y="945" class="b">99.40% -> 7.20% mean ASR</text>
+    <text x="1483" y="911" class="r">Within-family transfer shown.</text><text x="1483" y="945" class="l">Cross-family and defense-aware attacks</text><text x="1483" y="977" class="l">remain open.</text>
+  </g>
+
+  <g>
+    <rect x="35" y="1030" width="1930" height="145" rx="8" fill="#fbfcfe" stroke="#c4d0df"/>
+    <text x="58" y="1070" class="q">Is the generator a black box?</text>
+    <text x="58" y="1106" class="b">Can the correction map be trusted</text><text x="58" y="1135" class="b">for any causal explanation?</text>
+    <text x="503" y="1072" class="b">Intervened on predicted support and</text><text x="503" y="1106" class="b">compared with known oracle evidence.</text>
+    <text x="988" y="1072" class="r">Support IoU: 0.6457</text><text x="988" y="1106" class="b">correction/evidence cosine: 0.8550</text>
+    <text x="1483" y="1072" class="r">Opened behaviorally, not symbolically.</text><text x="1483" y="1106" class="l">No guarantee that every changed</text><text x="1483" y="1138" class="l">coefficient is malicious.</text>
+  </g>
+
+  <text x="1000" y="1226" text-anchor="middle" class="sub">Green statements are demonstrated claims. Brown italic statements are limits that must remain visible in a paper or viva.</text>
+</svg>

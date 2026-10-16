@@ -1,0 +1,14 @@
+{
+  "purpose": "qualitative noise-only failure example; not aggregate evidence",
+  "trigger_used_only_to_calibrate_noise_rms": "ftpos_near_mixed",
+  "requested_tnr_db": -10.0,
+  "realized_tnr_db": -9.812426567077637,
+  "true_class": "blotchy",
+  "clean_prediction": "blotchy",
+  "noise_only_prediction": "banded",
+  "corrected_noise_prediction": "banded",
+  "selection": "clean_correct__noise_only_wrong",
+  "seed": 342,
+  "batch_index": 0,
+  "item_index": 4
+}

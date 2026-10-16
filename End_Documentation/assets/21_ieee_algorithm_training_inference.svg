@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1920" viewBox="0 0 1800 1920">
+  <rect width="1800" height="1920" fill="#ffffff"/>
+  <style>
+    .title { font: bold 39px "Times New Roman", Times, serif; fill: #111; }
+    .head { font: bold 28px "Times New Roman", Times, serif; fill: #111; }
+    .body { font: 27px "Times New Roman", Times, serif; fill: #111; }
+    .small { font: 25px "Times New Roman", Times, serif; fill: #111; }
+    .ital { font: italic 25px "Times New Roman", Times, serif; fill: #333; }
+    .num { font: 25px "Times New Roman", Times, serif; fill: #333; }
+    .math { font: italic 27px "Cambria Math", "Times New Roman", serif; fill: #111; }
+    .sub { baseline-shift: sub; font-size: 70%; }
+    .sup { baseline-shift: super; font-size: 70%; }
+  </style>
+
+  <line x1="38" y1="38" x2="1762" y2="38" stroke="#111" stroke-width="4"/>
+  <text x="48" y="84" class="title">Algorithm 1  Training the Classifier and Reference-Free Generator</text>
+  <line x1="38" y1="101" x2="1762" y2="101" stroke="#111" stroke-width="2.5"/>
+  <text x="48" y="145" class="head">Input:</text>
+  <text x="150" y="145" class="body">clean labeled set <tspan class="math">D</tspan>; target <tspan class="math">y</tspan><tspan class="sup">*</tspan>; trigger <tspan class="math">T</tspan>; seen positions <tspan class="math">P</tspan><tspan class="sub">seen</tspan>; loss weights <tspan class="math">&#955;</tspan></text>
+  <text x="48" y="186" class="head">Output:</text>
+  <text x="170" y="186" class="body">frozen suspicious classifier <tspan class="math">f</tspan><tspan class="sub">s</tspan> and trained correction generator <tspan class="math">G</tspan><tspan class="sub">&#952;</tspan></text>
+  <line x1="38" y1="204" x2="1762" y2="204" stroke="#111" stroke-width="1.5"/>
+
+  <text x="45" y="248" class="num">1:</text><text x="100" y="248" class="math">D<tspan class="sub">p</tspan> &#8592; D</text>
+  <text x="45" y="290" class="num">2:</text><text x="100" y="290" class="head">for</text><text x="157" y="290" class="body">each selected non-target sample (x,y)</text><text x="675" y="290" class="head">do</text>
+  <text x="45" y="332" class="num">3:</text><text x="138" y="332" class="body">sample attack position <tspan class="math">p</tspan> and construct <tspan class="math">t &#8592; T(x;p)</tspan></text>
+  <text x="45" y="374" class="num">4:</text><text x="138" y="374" class="math">D<tspan class="sub">p</tspan> &#8592; D<tspan class="sub">p</tspan> &#8746; {(t,y<tspan class="sup">*</tspan>)}</text>
+  <text x="45" y="416" class="num">5:</text><text x="100" y="416" class="head">end for</text>
+  <text x="45" y="458" class="num">6:</text><text x="100" y="458" class="body">train <tspan class="math">f</tspan><tspan class="sub">s</tspan> on <tspan class="math">D</tspan><tspan class="sub">p</tspan></text>
+  <text x="45" y="500" class="num">7:</text><text x="100" y="500" class="body">verify clean accuracy, ASR lift, and conditional ASR; freeze <tspan class="math">f</tspan><tspan class="sub">s</tspan></text>
+  <text x="45" y="542" class="num">8:</text><text x="100" y="542" class="body">initialize <tspan class="math">G</tspan><tspan class="sub">&#952;</tspan> near the identity correction</text>
+  <text x="45" y="584" class="num">9:</text><text x="100" y="584" class="head">for</text><text x="157" y="584" class="body">each generator epoch and clean minibatch (x,y)</text><text x="795" y="584" class="head">do</text>
+  <text x="45" y="626" class="num">10:</text><text x="138" y="626" class="body">sample <tspan class="math">p &#8712; P</tspan><tspan class="sub">seen</tspan>; construct <tspan class="math">t &#8592; T(x;p)</tspan></text>
+  <text x="138" y="666" class="ital">Only t enters the generator. Clean x supplies the desired label and reconstruction target.</text>
+  <text x="45" y="708" class="num">11:</text><text x="138" y="708" class="math">(L<tspan class="sub">t</tspan>,P<tspan class="sub">t</tspan>) &#8592; Spectrum(t);   Z<tspan class="sub">t</tspan> &#8592; Evidence(L<tspan class="sub">t</tspan>,P<tspan class="sub">t</tspan>)</text>
+  <text x="138" y="748" class="ital">Evidence describes amplitude, local anomaly, phase, and frequency location from t alone.</text>
+  <text x="45" y="790" class="num">12:</text><text x="138" y="790" class="math">(M,&#916;) &#8592; G<tspan class="sub">&#952;</tspan>(Z<tspan class="sub">t</tspan>);   E &#8592; M &#8857; &#916;</text>
+  <text x="138" y="830" class="ital"><tspan class="math">M</tspan> decides where to intervene; <tspan class="math">&#916;</tspan> decides whether and how far amplitude moves.</text>
+  <text x="45" y="872" class="num">13:</text><text x="138" y="872" class="math">L<tspan class="sub">c</tspan> &#8592; max(L<tspan class="sub">t</tspan> + E,0);   x<tspan class="sub">c</tspan> &#8592; Reconstruct(L<tspan class="sub">c</tspan>,P<tspan class="sub">t</tspan>)</text>
+  <text x="138" y="912" class="ital">Preserve the input phase and reconstruct the image using corrected log amplitude.</text>
+  <text x="45" y="954" class="num">14:</text><text x="138" y="954" class="math">x<tspan class="sub">id</tspan> &#8592; Correct(x;G<tspan class="sub">&#952;</tspan>)</text>
+  <text x="45" y="996" class="num">15:</text><text x="138" y="996" class="math">&#8466; &#8592; &#8466;<tspan class="sub">cls</tspan> + 4&#8466;<tspan class="sub">img</tspan> + &#8466;<tspan class="sub">spec</tspan> + 2&#8466;<tspan class="sub">id</tspan> + 0.02&#8466;<tspan class="sub">sp</tspan> + 0.01&#8466;<tspan class="sub">sm</tspan></text>
+  <text x="138" y="1036" class="ital">Recover the true class while limiting image change, dense correction, and rough maps.</text>
+  <text x="45" y="1078" class="num">16:</text><text x="138" y="1078" class="body">update <tspan class="math">&#952;</tspan> by minimizing <tspan class="math">&#8466;</tspan>; keep <tspan class="math">f</tspan><tspan class="sub">s</tspan> frozen</text>
+  <text x="45" y="1120" class="num">17:</text><text x="100" y="1120" class="head">end for</text>
+  <line x1="38" y1="1144" x2="1762" y2="1144" stroke="#111" stroke-width="4"/>
+
+  <line x1="38" y1="1214" x2="1762" y2="1214" stroke="#111" stroke-width="4"/>
+  <text x="48" y="1260" class="title">Algorithm 2  Reference-Free Correction of One Inference Image</text>
+  <line x1="38" y1="1277" x2="1762" y2="1277" stroke="#111" stroke-width="2.5"/>
+  <text x="48" y="1321" class="head">Input:</text>
+  <text x="150" y="1321" class="body">one possibly attacked image <tspan class="math">u</tspan>; frozen <tspan class="math">f</tspan><tspan class="sub">s</tspan>; trained <tspan class="math">G</tspan><tspan class="sub">&#952;</tspan></text>
+  <text x="48" y="1362" class="head">Output:</text>
+  <text x="170" y="1362" class="body">corrected image <tspan class="math">u</tspan><tspan class="sub">c</tspan>; class prediction <tspan class="math">&#375;</tspan>; correction evidence <tspan class="math">E</tspan></text>
+  <line x1="38" y1="1380" x2="1762" y2="1380" stroke="#111" stroke-width="1.5"/>
+
+  <text x="45" y="1425" class="num">1:</text><text x="100" y="1425" class="math">(L<tspan class="sub">u</tspan>,P<tspan class="sub">u</tspan>) &#8592; Spectrum(u)</text>
+  <text x="45" y="1468" class="num">2:</text><text x="100" y="1468" class="math">Z<tspan class="sub">u</tspan> &#8592; Evidence(L<tspan class="sub">u</tspan>,P<tspan class="sub">u</tspan>)</text>
+  <text x="45" y="1511" class="num">3:</text><text x="100" y="1511" class="math">(M<tspan class="sub">u</tspan>,&#916;<tspan class="sub">u</tspan>) &#8592; G<tspan class="sub">&#952;</tspan>(Z<tspan class="sub">u</tspan>);   E &#8592; M<tspan class="sub">u</tspan> &#8857; &#916;<tspan class="sub">u</tspan></text>
+  <text x="45" y="1554" class="num">4:</text><text x="100" y="1554" class="math">L<tspan class="sub">c</tspan> &#8592; max(L<tspan class="sub">u</tspan> + E,0)</text>
+  <text x="45" y="1597" class="num">5:</text><text x="100" y="1597" class="math">u<tspan class="sub">c</tspan> &#8592; Reconstruct(L<tspan class="sub">c</tspan>,P<tspan class="sub">u</tspan>)</text>
+  <text x="45" y="1640" class="num">6:</text><text x="100" y="1640" class="math">&#375; &#8592; arg max f<tspan class="sub">s</tspan>(u<tspan class="sub">c</tspan>)</text>
+  <text x="45" y="1683" class="num">7:</text><text x="100" y="1683" class="head">return</text><text x="210" y="1683" class="math">(u<tspan class="sub">c</tspan>,&#375;,E)</text>
+  <line x1="38" y1="1710" x2="1762" y2="1710" stroke="#111" stroke-width="4"/>
+
+  <text x="48" y="1762" class="head">Plain-language reading:</text>
+  <text x="355" y="1762" class="small">training teaches a reusable correction from many controlled examples.</text>
+  <text x="48" y="1804" class="small">At deployment, one new image supplies all spectral evidence; no clean twin or true label is available.</text>
+  <text x="48" y="1846" class="small">The generator proposes one correction, reconstructs once, and the frozen classifier predicts once.</text>
+  <line x1="38" y1="1882" x2="1762" y2="1882" stroke="#111" stroke-width="2"/>
+</svg>

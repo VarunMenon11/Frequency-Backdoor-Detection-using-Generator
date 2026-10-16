@@ -1,0 +1,76 @@
+% Standalone IEEE-style preview. Copy the two algorithm environments into the
+% final IEEE manuscript. Required packages: amsmath, amssymb, algorithm,
+% algpseudocode, and IEEEtran.
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
+
+\title{Reference-Free Selective Spectral Correction}
+\author{\IEEEauthorblockN{Algorithm Preview}}
+
+\begin{document}
+\maketitle
+
+\begin{algorithm}[t]
+\caption{Training the suspicious classifier and correction generator}
+\label{alg:train-reference-free-defense}
+\begin{algorithmic}[1]
+\Require Clean labeled set $\mathcal{D}$, target class $y^*$, trigger
+$T(\cdot;p)$, seen positions $\mathcal{P}_{\mathrm{seen}}$, loss weights
+$\boldsymbol{\lambda}$
+\Ensure Frozen suspicious classifier $f_s$ and trained generator $G_\theta$
+\State $\mathcal{D}_p \gets \mathcal{D}$
+\For{each selected non-target sample $(x,y)$}
+    \State Sample attack position $p$ and form $t\gets T(x;p)$
+    \State $\mathcal{D}_p\gets\mathcal{D}_p\cup\{(t,y^*)\}$
+\EndFor
+\State Train $f_s$ on $\mathcal{D}_p$
+\State Verify clean accuracy, ASR lift, and conditional ASR; freeze $f_s$
+\State Initialize $G_\theta$ near the identity correction
+\For{each generator epoch}
+    \For{each clean minibatch $(x,y)\sim\mathcal{D}$}
+        \State Sample $p\in\mathcal{P}_{\mathrm{seen}}$; $t\gets T(x;p)$
+        \Statex \emph{Only $t$ is supplied to $G_\theta$; $x$ is supervision.}
+        \State $(L_t,P_t)\gets\Call{Spectrum}{t}$
+        \State $Z_t\gets\Call{Evidence}{L_t,P_t}$
+        \State $(M,\Delta)\gets G_\theta(Z_t)$; $E\gets M\odot\Delta$
+        \State $L_c\gets\max(L_t+E,0)$
+        \State $x_c\gets\Call{Reconstruct}{L_c,P_t}$
+        \State $x_{\mathrm{id}}\gets\Call{Correct}{x,G_\theta}$
+        \State $\mathcal{L}\gets\mathcal{L}_{\mathrm{cls}}+4\mathcal{L}_{\mathrm{img}}
+        +\mathcal{L}_{\mathrm{spec}}+2\mathcal{L}_{\mathrm{id}}
+        +0.02\mathcal{L}_{\mathrm{sp}}+0.01\mathcal{L}_{\mathrm{sm}}$
+        \State Update $\theta$ to minimize $\mathcal{L}$; keep $f_s$ frozen
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{Reference-free correction of one inference image}
+\label{alg:infer-reference-free-defense}
+\begin{algorithmic}[1]
+\Require One possibly attacked image $u$, frozen $f_s$, trained $G_\theta$
+\Ensure Corrected image $u_c$, prediction $\hat y$, correction evidence $E$
+\State $(L_u,P_u)\gets\Call{Spectrum}{u}$
+\State $Z_u\gets\Call{Evidence}{L_u,P_u}$
+\State $(M_u,\Delta_u)\gets G_\theta(Z_u)$; $E\gets M_u\odot\Delta_u$
+\State $L_c\gets\max(L_u+E,0)$
+\State $u_c\gets\Call{Reconstruct}{L_c,P_u}$
+\State $\hat y\gets\arg\max f_s(u_c)$
+\State \Return $(u_c,\hat y,E)$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Function definitions.}
+$\Call{Spectrum}{u}$ returns log amplitude $L_u=\log(1+|\mathcal{F}(u)|)$
+and phase $P_u=\angle\mathcal{F}(u)$. $\Call{Evidence}{L,P}$ concatenates
+normalized log amplitude, local spectral residual, sine and cosine phase, and
+frequency coordinates. $\Call{Reconstruct}{L,P}$ computes
+$\operatorname{clip}(\operatorname{Re}[\mathcal{F}^{-1}((e^L-1)e^{jP})],0,1)$.
+
+\end{document}
