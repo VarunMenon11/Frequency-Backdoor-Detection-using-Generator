@@ -232,6 +232,7 @@ cifar_command = [
     "--classifier-epochs", "60",
     "--generator-epochs", "12",
     "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
     "--minimum-clean-accuracy", "0.68",
     "--classifier-batch-size", "256",
     "--generator-batch-size", "64",
@@ -241,7 +242,63 @@ cifar_command = [
 subprocess.run(cifar_command, cwd=REPO, check=True)
 ```
 
-## Cell 8: Validate the Tiny ImageNet classifier first
+## Cell 8: Recover only a rejected CIFAR generator
+
+Run this cell only when the full CIFAR command reports `No generator epoch
+satisfied the clean-accuracy constraint`. It preserves every completed
+classifier, detects the unfinished attack, and restarts only that generator
+with the clean-preserving loss. After this cell succeeds, rerun Cell 7 so the
+benchmark can skip completed work and continue to the next attack.
+
+```python
+import subprocess, sys
+import json
+from pathlib import Path
+
+experiment_root = REPO / "Benchmark_Experiments" / "cifar_tiny_reference_free_v4"
+unfinished_attacks = []
+for attack_name in ("sig", "blended", "ftrojan"):
+    run_dir = experiment_root / "cifar100" / attack_name
+    if (
+        (run_dir / "classifier_training_complete.json").is_file()
+        and not (run_dir / "generator_training_complete.json").is_file()
+    ):
+        unfinished_attacks.append(attack_name)
+
+print("Generators requiring a clean restart:", unfinished_attacks)
+for attack_name in unfinished_attacks:
+    history_path = experiment_root / "cifar100" / attack_name / "generator_history.json"
+    if history_path.is_file():
+        print(f"\nPrevious {attack_name} generator checkpoints:")
+        for record in json.loads(history_path.read_text()):
+            validation = record["validation"]
+            print(
+                f"  epoch {record['epoch']:02d}: "
+                f"ACC={validation['clean_accuracy']:.4f}, "
+                f"ASR={validation['asr']:.4f}, "
+                f"RA={validation['robust_accuracy']:.4f}"
+            )
+    recovery_command = [
+        sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+        "--datasets", "cifar100",
+        "--attacks", attack_name,
+        "--stage", "generator",
+        "--rerun-generator",
+        "--cifar-root", str(CIFAR_ROOT),
+        "--classifier-epochs", "60",
+        "--generator-epochs", "12",
+        "--generator-data-fraction", "0.02",
+        "--max-log-correction", "0.75",
+        "--minimum-clean-accuracy", "0.68",
+        "--classifier-batch-size", "256",
+        "--generator-batch-size", "64",
+        "--num-workers", "2",
+        "--device", "cuda",
+    ]
+    subprocess.run(recovery_command, cwd=REPO, check=True)
+```
+
+## Cell 9: Validate the Tiny ImageNet classifier first
 
 This pilot uses only SIG and stops before generator training. It verifies the
 faster standard-stem model and the `45%` clean-accuracy gate before the complete
@@ -268,7 +325,7 @@ subprocess.run(tiny_pilot_command, cwd=REPO, check=True)
 Continue only after the selected checkpoint reaches the required clean
 accuracy and attack thresholds. The full run below reuses this checkpoint.
 
-## Cell 9: Run the full Tiny ImageNet benchmark
+## Cell 10: Run the full Tiny ImageNet benchmark
 
 ```python
 tiny_command = [
@@ -279,6 +336,7 @@ tiny_command = [
     "--classifier-epochs", "40",
     "--generator-epochs", "12",
     "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
     "--minimum-clean-accuracy", "0.45",
     "--classifier-batch-size", "256",
     "--generator-batch-size", "64",
@@ -288,12 +346,12 @@ tiny_command = [
 subprocess.run(tiny_command, cwd=REPO, check=True)
 ```
 
-If Kaggle stops before all six runs finish, rerun Cells 7 and 9. Completed
+If Kaggle stops before all six runs finish, rerun Cells 7 and 10. Completed
 dataset/attack pairs are skipped automatically, and saved classifier
 checkpoints are reused when generator training is unfinished. Do not add
 `--rerun` unless you deliberately want to replace completed results.
 
-## Cell 10: Display the paper table
+## Cell 11: Display the paper table
 
 ```python
 import pandas as pd
@@ -315,7 +373,7 @@ Interpret each matched row using three values:
 Do not say our method is better merely because ASR is lower. It is better on a
 row only if ASR falls while ACC and RA remain acceptable.
 
-## Cell 11: Display saved visual evidence
+## Cell 12: Display saved visual evidence
 
 ```python
 from PIL import Image
@@ -332,7 +390,7 @@ Each panel shows the clean image, triggered image, corrected image, magnified
 pixel difference, clean/trigger/corrected spectra, and the correction actually
 applied by the generator.
 
-## Cell 12: Sanity-check every run
+## Cell 13: Sanity-check every run
 
 ```python
 import json
@@ -359,7 +417,7 @@ Expected final count: six `complete` summaries. A `rejected_weak_attack` result
 means the trigger/model configuration must be calibrated before training its
 generator.
 
-## Cell 13: Create manageable downloads
+## Cell 14: Create manageable downloads
 
 ```python
 import shutil

@@ -39,8 +39,9 @@ class GeneratorWeights:
     classification: float = 1.0
     image: float = 4.0
     spectral: float = 1.0
-    identity: float = 2.0
-    sparsity: float = 0.02
+    identity: float = 6.0
+    clean_consistency: float = 2.0
+    sparsity: float = 0.05
     smoothness: float = 0.01
 
 
@@ -103,6 +104,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--no-amp", action="store_true")
     parser.add_argument("--rerun", action="store_true")
+    parser.add_argument(
+        "--rerun-generator", action="store_true",
+        help="Restart only generator training while reusing the selected classifier.",
+    )
     return parser.parse_args()
 
 
@@ -263,7 +268,12 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
         base_channels=args.base_channels,
         max_log_correction=args.max_log_correction,
     ).to(device)
-    if generator_path.is_file() and generator_complete.is_file() and not args.rerun:
+    if (
+        generator_path.is_file()
+        and generator_complete.is_file()
+        and not args.rerun
+        and not args.rerun_generator
+    ):
         checkpoint = torch.load(generator_path, map_location=device, weights_only=True)
         generator.load_state_dict(checkpoint["generator_state_dict"])
         generator_record = checkpoint["record"]
@@ -342,7 +352,11 @@ def train_classifier(
     history_path = experiment_dir / "classifier_history.json"
     last_path = experiment_dir / "suspicious_classifier_last.pt"
     history, best_key, best_record, start_epoch = [], None, None, 1
-    if last_path.is_file() and history_path.is_file() and not args.rerun:
+    if (
+        last_path.is_file()
+        and history_path.is_file()
+        and not args.rerun
+    ):
         last = torch.load(last_path, map_location=device, weights_only=True)
         model.load_state_dict(last["model_state_dict"])
         optimizer.load_state_dict(last["optimizer_state_dict"])
@@ -485,7 +499,12 @@ def train_generator(
     history_path = experiment_dir / "generator_history.json"
     last_path = experiment_dir / "reference_free_generator_last.pt"
     history, best_key, best_record, start_epoch = [], None, None, 1
-    if last_path.is_file() and history_path.is_file() and not args.rerun:
+    if (
+        last_path.is_file()
+        and history_path.is_file()
+        and not args.rerun
+        and not args.rerun_generator
+    ):
         last = torch.load(last_path, map_location=device, weights_only=True)
         generator.load_state_dict(last["generator_state_dict"])
         optimizer.load_state_dict(last["optimizer_state_dict"])
@@ -504,7 +523,12 @@ def train_generator(
         print(f"  resuming generator at epoch {start_epoch}", flush=True)
     for epoch in range(start_epoch, args.generator_epochs + 1):
         generator.train()
-        sums = {key: 0.0 for key in ("total", "cls", "image", "spectral", "identity", "sparse", "smooth")}
+        sums = {
+            key: 0.0 for key in (
+                "total", "cls", "image", "spectral", "identity",
+                "clean_consistency", "sparse", "smooth",
+            )
+        }
         count = 0
         for batch_index, (clean, triggered, labels) in enumerate(loader):
             if args.max_train_batches is not None and batch_index >= args.max_train_batches:
@@ -519,6 +543,16 @@ def train_generator(
                 clean_log = torch.log1p(torch.fft.fft2(clean.float(), dim=(-2, -1)).abs())
                 spectral = F.l1_loss(output.corrected_log_amplitude, clean_log)
                 identity_loss = F.l1_loss(identity.corrected_image, clean)
+                with torch.no_grad():
+                    original_clean_distribution = F.softmax(classifier(clean), dim=1)
+                corrected_clean_log_distribution = F.log_softmax(
+                    classifier(identity.corrected_image), dim=1
+                )
+                clean_consistency = F.kl_div(
+                    corrected_clean_log_distribution,
+                    original_clean_distribution,
+                    reduction="batchmean",
+                )
                 sparse = 0.5 * (
                     output.correction_mask.mean() + identity.correction_mask.mean()
                 )
@@ -526,6 +560,7 @@ def train_generator(
                 total = (
                     weights.classification * cls + weights.image * image
                     + weights.spectral * spectral + weights.identity * identity_loss
+                    + weights.clean_consistency * clean_consistency
                     + weights.sparsity * sparse + weights.smoothness * smooth
                 )
             scaler.scale(total).backward()
@@ -535,7 +570,10 @@ def train_generator(
             scaler.update()
             batch = labels.numel()
             count += batch
-            values = (total, cls, image, spectral, identity_loss, sparse, smooth)
+            values = (
+                total, cls, image, spectral, identity_loss,
+                clean_consistency, sparse, smooth,
+            )
             for key, value in zip(sums, values):
                 sums[key] += float(value.detach()) * batch
         train_metrics = {name: value / max(count, 1) for name, value in sums.items()}
@@ -594,7 +632,16 @@ def train_generator(
                 flush=True,
             )
     if best_record is None:
-        raise RuntimeError("No generator epoch satisfied the clean-accuracy constraint")
+        best_clean = max(history, key=lambda item: item["validation"]["clean_accuracy"])
+        lowest_asr = min(history, key=lambda item: item["validation"]["asr"])
+        raise RuntimeError(
+            "No generator epoch satisfied the clean-accuracy constraint. "
+            f"Required ACC >= {suspicious_clean_accuracy - args.max_clean_accuracy_drop:.4f}; "
+            f"best ACC was {best_clean['validation']['clean_accuracy']:.4f} "
+            f"at epoch {best_clean['epoch']}. Lowest ASR was "
+            f"{lowest_asr['validation']['asr']:.4f} at epoch {lowest_asr['epoch']} "
+            f"with ACC {lowest_asr['validation']['clean_accuracy']:.4f}."
+        )
     selected = torch.load(checkpoint_path, map_location=device, weights_only=True)
     generator.load_state_dict(selected["generator_state_dict"])
     write_json(
