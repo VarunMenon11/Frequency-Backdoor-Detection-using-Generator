@@ -55,17 +55,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--download-cifar", action="store_true")
     parser.add_argument(
         "--experiment-root", type=Path,
-        default=Path("Benchmark_Experiments/cifar_tiny_reference_free_v3"),
+        default=Path("Benchmark_Experiments/cifar_tiny_reference_free_v4"),
     )
     parser.add_argument(
         "--output-root", type=Path,
-        default=Path("Benchmark_Outputs/cifar_tiny_reference_free_v3"),
+        default=Path("Benchmark_Outputs/cifar_tiny_reference_free_v4"),
     )
     parser.add_argument("--stage", choices=["all", "classifier", "generator"], default="all")
     parser.add_argument("--classifier-epochs", type=int, default=60)
-    parser.add_argument("--generator-epochs", type=int, default=20)
+    parser.add_argument("--generator-epochs", type=int, default=12)
+    parser.add_argument("--classifier-eval-interval", type=int, default=5)
+    parser.add_argument("--generator-eval-interval", type=int, default=2)
     parser.add_argument("--freeze-epochs", type=int, default=2)
-    parser.add_argument("--classifier-batch-size", type=int, default=128)
+    parser.add_argument("--classifier-batch-size", type=int, default=256)
     parser.add_argument("--generator-batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--classifier-optimizer", choices=["sgd", "adamw"], default="sgd")
@@ -159,6 +161,7 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
     test_pairs = PairedTriggerDataset(
         bundle.test, target_label=args.target_label, trigger=trigger
     )
+    uses_small_input_stem = bundle.native_size == 32
     run_config = {
         "dataset": dataset_name,
         "classes": len(bundle.class_names),
@@ -173,8 +176,9 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
         "generator_clean_data_fraction": args.generator_data_fraction,
         "poisoned_training_samples": len(poisoned_train.poisoned_indices),
         "model": (
-            "ImageNet-pretrained ResNet-18 with stride-1 input convolution "
-            "and no initial max-pool"
+            "ImageNet-pretrained ResNet-18 with CIFAR small-image stem"
+            if uses_small_input_stem
+            else "ImageNet-pretrained ResNet-18 with standard input stem"
         ),
         "generator": "ReferenceFreeSpectralGenerator; one image at inference",
         "checkpoint_selection": "calibration split only; official test held out",
@@ -196,7 +200,7 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
         backbone="resnet18",
         num_classes=len(bundle.class_names),
         weights="default",
-        small_input_stem=bundle.native_size <= 64,
+        small_input_stem=uses_small_input_stem,
     ).to(device)
     if classifier_path.is_file() and classifier_complete.is_file() and not args.rerun:
         checkpoint = torch.load(classifier_path, map_location=device, weights_only=True)
@@ -378,33 +382,41 @@ def train_classifier(
             count += labels.numel()
             total_loss += float(loss.detach()) * labels.numel()
             correct += int((logits.argmax(1) == labels).sum())
-        metrics = evaluate_model(
-            model, None, clean_calibration, paired_calibration, args, device
+        train_loss = total_loss / max(count, 1)
+        train_accuracy = correct / max(count, 1)
+        should_evaluate = (
+            epoch % args.classifier_eval_interval == 0
+            or epoch == args.classifier_epochs
         )
-        eligible = (
-            metrics["clean_accuracy"] >= clean_floor
-            and metrics["asr_lift"] >= args.minimum_attack_lift
-            and metrics["conditional_asr_clean_correct"]
-            >= args.minimum_conditional_asr
-        )
-        key = (
-            metrics["clean_accuracy"],
-            metrics["conditional_asr_clean_correct"],
-            metrics["asr_lift"],
-        ) if eligible else None
-        record = {
-            "epoch": epoch, "train_loss": total_loss / max(count, 1),
-            "train_accuracy": correct / max(count, 1), "validation": metrics,
-            "selection_eligible": eligible,
-        }
-        history.append(record)
+        if should_evaluate:
+            metrics = evaluate_model(
+                model, None, clean_calibration, paired_calibration, args, device
+            )
+            eligible = (
+                metrics["clean_accuracy"] >= clean_floor
+                and metrics["asr_lift"] >= args.minimum_attack_lift
+                and metrics["conditional_asr_clean_correct"]
+                >= args.minimum_conditional_asr
+            )
+            key = (
+                metrics["clean_accuracy"],
+                metrics["conditional_asr_clean_correct"],
+                metrics["asr_lift"],
+            ) if eligible else None
+            record = {
+                "epoch": epoch, "train_loss": train_loss,
+                "train_accuracy": train_accuracy, "validation": metrics,
+                "selection_eligible": eligible,
+            }
+            history.append(record)
+            write_json(history_path, history)
+            if key is not None and (best_key is None or key > best_key):
+                best_key, best_record = key, record
+                torch.save({
+                    "model_state_dict": model.state_dict(), "record": record,
+                    "run_config": run_config,
+                }, checkpoint_path)
         write_json(history_path, history)
-        if key is not None and (best_key is None or key > best_key):
-            best_key, best_record = key, record
-            torch.save({
-                "model_state_dict": model.state_dict(), "record": record,
-                "run_config": run_config,
-            }, checkpoint_path)
         scheduler.step()
         torch.save({
             "model_state_dict": model.state_dict(),
@@ -413,12 +425,19 @@ def train_classifier(
             "scaler_state_dict": scaler.state_dict(),
             "epoch": epoch,
         }, last_path)
-        print(
-            f"  classifier {epoch:02d}/{args.classifier_epochs} | "
-            f"clean {metrics['clean_accuracy']:.4f} | ASR {metrics['asr']:.4f} | "
-            f"lift {metrics['asr_lift']:.4f} | cASR "
-            f"{metrics['conditional_asr_clean_correct']:.4f}", flush=True,
-        )
+        if should_evaluate:
+            print(
+                f"  classifier {epoch:02d}/{args.classifier_epochs} | "
+                f"train {train_accuracy:.4f} | clean {metrics['clean_accuracy']:.4f} | "
+                f"ASR {metrics['asr']:.4f} | lift {metrics['asr_lift']:.4f} | "
+                f"cASR {metrics['conditional_asr_clean_correct']:.4f}", flush=True,
+            )
+        else:
+            print(
+                f"  classifier {epoch:02d}/{args.classifier_epochs} | "
+                f"train {train_accuracy:.4f} | validation deferred",
+                flush=True,
+            )
     if best_record is None:
         highest = max(
             history,
@@ -519,33 +538,40 @@ def train_generator(
             values = (total, cls, image, spectral, identity_loss, sparse, smooth)
             for key, value in zip(sums, values):
                 sums[key] += float(value.detach()) * batch
-        validation = evaluate_model(
-            classifier, generator, paired_calibration.clean, paired_calibration,
-            args, device,
+        train_metrics = {name: value / max(count, 1) for name, value in sums.items()}
+        should_evaluate = (
+            epoch % args.generator_eval_interval == 0
+            or epoch == args.generator_epochs
         )
-        eligible = validation["clean_accuracy"] >= (
-            suspicious_clean_accuracy - args.max_clean_accuracy_drop
-        )
-        key = (
-            1.0 - validation["asr"], validation["robust_accuracy"],
-            validation["clean_accuracy"],
-        ) if eligible else None
-        record = {
-            "epoch": epoch,
-            "train": {name: value / max(count, 1) for name, value in sums.items()},
-            "validation": validation,
-            "selection_eligible": eligible,
-            "loss_weights": asdict(weights),
-            "generator_clean_samples": len(generator_clean),
-        }
-        history.append(record)
+        if should_evaluate:
+            validation = evaluate_model(
+                classifier, generator, paired_calibration.clean, paired_calibration,
+                args, device,
+            )
+            eligible = validation["clean_accuracy"] >= (
+                suspicious_clean_accuracy - args.max_clean_accuracy_drop
+            )
+            key = (
+                1.0 - validation["asr"], validation["robust_accuracy"],
+                validation["clean_accuracy"],
+            ) if eligible else None
+            record = {
+                "epoch": epoch,
+                "train": train_metrics,
+                "validation": validation,
+                "selection_eligible": eligible,
+                "loss_weights": asdict(weights),
+                "generator_clean_samples": len(generator_clean),
+            }
+            history.append(record)
+            write_json(history_path, history)
+            if key is not None and (best_key is None or key > best_key):
+                best_key, best_record = key, record
+                torch.save({
+                    "generator_state_dict": generator.state_dict(), "record": record,
+                    "run_config": run_config, "generator_metadata": generator.metadata(),
+                }, checkpoint_path)
         write_json(history_path, history)
-        if key is not None and (best_key is None or key > best_key):
-            best_key, best_record = key, record
-            torch.save({
-                "generator_state_dict": generator.state_dict(), "record": record,
-                "run_config": run_config, "generator_metadata": generator.metadata(),
-            }, checkpoint_path)
         scheduler.step()
         torch.save({
             "generator_state_dict": generator.state_dict(),
@@ -554,12 +580,19 @@ def train_generator(
             "scaler_state_dict": scaler.state_dict(),
             "epoch": epoch,
         }, last_path)
-        print(
-            f"  generator {epoch:02d}/{args.generator_epochs} | "
-            f"loss {record['train']['total']:.4f} | ASR {validation['asr']:.4f} | "
-            f"RA {validation['robust_accuracy']:.4f} | ACC "
-            f"{validation['clean_accuracy']:.4f} | eligible {eligible}", flush=True,
-        )
+        if should_evaluate:
+            print(
+                f"  generator {epoch:02d}/{args.generator_epochs} | "
+                f"loss {train_metrics['total']:.4f} | ASR {validation['asr']:.4f} | "
+                f"RA {validation['robust_accuracy']:.4f} | ACC "
+                f"{validation['clean_accuracy']:.4f} | eligible {eligible}", flush=True,
+            )
+        else:
+            print(
+                f"  generator {epoch:02d}/{args.generator_epochs} | "
+                f"loss {train_metrics['total']:.4f} | validation deferred",
+                flush=True,
+            )
     if best_record is None:
         raise RuntimeError("No generator epoch satisfied the clean-accuracy constraint")
     selected = torch.load(checkpoint_path, map_location=device, weights_only=True)
@@ -797,7 +830,10 @@ def validate_args(args):
         raise ValueError("minimum-clean-accuracy must be in (0, 1]")
     if not 0.0 <= args.label_smoothing < 1.0:
         raise ValueError("label-smoothing must be in [0, 1)")
-    for name in ("classifier_epochs", "generator_epochs", "classifier_batch_size", "generator_batch_size"):
+    for name in (
+        "classifier_epochs", "generator_epochs", "classifier_eval_interval",
+        "generator_eval_interval", "classifier_batch_size", "generator_batch_size",
+    ):
         if getattr(args, name) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
     if args.num_workers < 0 or args.num_panels < 0:

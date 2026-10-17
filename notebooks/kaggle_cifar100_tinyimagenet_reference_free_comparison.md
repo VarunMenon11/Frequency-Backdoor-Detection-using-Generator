@@ -13,10 +13,12 @@ The defense receives a class-balanced **2% of clean training data**, matching
 the clean-data budget stated for defenses in the Freq-Pret experiment. The
 poisoned classifier still uses the full attack-training split.
 
-Both datasets use a ResNet-18 stem adapted for small images. It preserves the
-ImageNet-pretrained first-layer filters but uses stride 1 and removes the early
-max-pool. This prevents the standard ImageNet stem from discarding too much
-spatial information from CIFAR-100 (`32x32`) and Tiny ImageNet (`64x64`).
+CIFAR-100 uses a small-image ResNet-18 stem that preserves more information at
+`32x32`. Tiny ImageNet uses the standard pretrained stem; retaining full
+`64x64` feature maps through the first residual stage was unnecessarily slow.
+Classifier validation runs every five epochs and generator validation every
+two epochs. Checkpoint selection still uses the complete calibration split,
+and final reporting still uses the complete untouched test split.
 
 Classifier training uses SGD with momentum, Nesterov acceleration, cosine
 learning-rate decay, weight decay, ordinary crop/flip augmentation, and mild
@@ -75,7 +77,54 @@ if torch.cuda.is_available():
 assert torch.cuda.is_available(), "Enable a T4 GPU in Kaggle Settings."
 ```
 
-## Cell 3: Locate Tiny ImageNet
+## Cell 3: Locate the uploaded CIFAR-100 files
+
+Add the **CIFAR-100 Python** dataset through Kaggle's **Add Input** panel. This
+cell uses the uploaded files instead of downloading CIFAR-100. Some Kaggle
+copies place `train`, `test`, and `meta` directly at the dataset root, whereas
+torchvision expects them inside a directory named `cifar-100-python`. The cell
+creates symbolic links in `/kaggle/working`; it does not copy or modify the
+uploaded dataset.
+
+```python
+from pathlib import Path
+
+input_root = Path("/kaggle/input")
+search_roots = [input_root]
+for pattern in ("*", "*/*", "datasets/*/*", "datasets/*/*/*"):
+    search_roots.extend(path for path in input_root.glob(pattern) if path.is_dir())
+
+cifar_sources = []
+for root in search_roots:
+    for candidate in (root, root / "cifar-100-python"):
+        if all((candidate / name).is_file() for name in ("train", "test", "meta")):
+            cifar_sources.append(candidate)
+
+if not cifar_sources:
+    raise FileNotFoundError(
+        "Uploaded CIFAR-100 Python files were not found. Add the dataset and rerun this cell."
+    )
+
+CIFAR_SOURCE = cifar_sources[0]
+CIFAR_ROOT = Path("/kaggle/working/cifar100_uploaded")
+expected_folder = CIFAR_ROOT / "cifar-100-python"
+expected_folder.mkdir(parents=True, exist_ok=True)
+
+for name in ("train", "test", "meta"):
+    link = expected_folder / name
+    if link.is_symlink() or link.is_file():
+        link.unlink()
+    link.symlink_to(CIFAR_SOURCE / name)
+
+print("CIFAR-100 source:", CIFAR_SOURCE)
+print("Torchvision root:", CIFAR_ROOT)
+print("Using uploaded files:", [p.name for p in expected_folder.iterdir()])
+```
+
+This setup is nearly instantaneous because only links are created. Torchvision
+still checks the official file hashes before loading the Python files.
+
+## Cell 4: Locate Tiny ImageNet
 
 First add a Tiny ImageNet dataset through **Add Input**. The code accepts either
 the directory containing `tiny-imagenet-200` or that directory itself. Both
@@ -126,7 +175,7 @@ print(
 )
 ```
 
-## Cell 4: Fast preflight check
+## Cell 5: Fast preflight check
 
 This verifies imports and the runner without training.
 
@@ -139,7 +188,7 @@ subprocess.run(
 )
 ```
 
-## Cell 5: Validate the CIFAR-100 classifier first
+## Cell 6: Validate the CIFAR-100 classifier first
 
 Run one classifier-only pilot before starting the full benchmark. This verifies
 that the improved ResNet-18 reaches at least `68%` clean calibration accuracy
@@ -153,10 +202,10 @@ cifar_pilot_command = [
     "--datasets", "cifar100",
     "--attacks", "sig",
     "--stage", "classifier",
-    "--download-cifar",
-    "--classifier-epochs", "80",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--classifier-epochs", "60",
     "--minimum-clean-accuracy", "0.68",
-    "--classifier-batch-size", "128",
+    "--classifier-batch-size", "256",
     "--num-workers", "2",
     "--device", "cuda",
 ]
@@ -167,10 +216,10 @@ The final log must show an accepted classifier with clean accuracy of at least
 `0.68`. If it does not, stop and inspect the history instead of training the
 generator. When it passes, continue below; the saved SIG classifier is reused.
 
-## Cell 6: Run the full CIFAR-100 benchmark
+## Cell 7: Run the full CIFAR-100 benchmark
 
-Internet must be enabled for the first run so torchvision can download
-CIFAR-100 and the ImageNet ResNet-18 weights. Later reruns use the cache.
+The uploaded CIFAR-100 files are used directly. Internet is needed only if the
+ImageNet ResNet-18 weights are not already cached.
 
 ```python
 import subprocess, sys
@@ -179,12 +228,12 @@ cifar_command = [
     sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
     "--datasets", "cifar100",
     "--attacks", "sig,blended,ftrojan",
-    "--download-cifar",
-    "--classifier-epochs", "80",
-    "--generator-epochs", "20",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--classifier-epochs", "60",
+    "--generator-epochs", "12",
     "--generator-data-fraction", "0.02",
     "--minimum-clean-accuracy", "0.68",
-    "--classifier-batch-size", "128",
+    "--classifier-batch-size", "256",
     "--generator-batch-size", "64",
     "--num-workers", "2",
     "--device", "cuda",
@@ -192,7 +241,34 @@ cifar_command = [
 subprocess.run(cifar_command, cwd=REPO, check=True)
 ```
 
-## Cell 7: Run Tiny ImageNet
+## Cell 8: Validate the Tiny ImageNet classifier first
+
+This pilot uses only SIG and stops before generator training. It verifies the
+faster standard-stem model and the `45%` clean-accuracy gate before the complete
+Tiny ImageNet benchmark is started.
+
+```python
+import subprocess, sys
+
+tiny_pilot_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "tinyimagenet",
+    "--attacks", "sig",
+    "--stage", "classifier",
+    "--tiny-root", str(TINY_ROOT),
+    "--classifier-epochs", "40",
+    "--minimum-clean-accuracy", "0.45",
+    "--classifier-batch-size", "256",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(tiny_pilot_command, cwd=REPO, check=True)
+```
+
+Continue only after the selected checkpoint reaches the required clean
+accuracy and attack thresholds. The full run below reuses this checkpoint.
+
+## Cell 9: Run the full Tiny ImageNet benchmark
 
 ```python
 tiny_command = [
@@ -200,11 +276,11 @@ tiny_command = [
     "--datasets", "tinyimagenet",
     "--attacks", "sig,blended,ftrojan",
     "--tiny-root", str(TINY_ROOT),
-    "--classifier-epochs", "60",
-    "--generator-epochs", "20",
+    "--classifier-epochs", "40",
+    "--generator-epochs", "12",
     "--generator-data-fraction", "0.02",
     "--minimum-clean-accuracy", "0.45",
-    "--classifier-batch-size", "128",
+    "--classifier-batch-size", "256",
     "--generator-batch-size", "64",
     "--num-workers", "2",
     "--device", "cuda",
@@ -212,18 +288,18 @@ tiny_command = [
 subprocess.run(tiny_command, cwd=REPO, check=True)
 ```
 
-If Kaggle stops before all six runs finish, rerun Cells 6 and 7. Completed
+If Kaggle stops before all six runs finish, rerun Cells 7 and 9. Completed
 dataset/attack pairs are skipped automatically, and saved classifier
 checkpoints are reused when generator training is unfinished. Do not add
 `--rerun` unless you deliberately want to replace completed results.
 
-## Cell 8: Display the paper table
+## Cell 10: Display the paper table
 
 ```python
 import pandas as pd
 from IPython.display import Markdown, display
 
-OUTPUT = REPO / "Benchmark_Outputs" / "cifar_tiny_reference_free_v3"
+OUTPUT = REPO / "Benchmark_Outputs" / "cifar_tiny_reference_free_v4"
 display(Markdown((OUTPUT / "paper_comparison_table.md").read_text()))
 
 table = pd.read_csv(OUTPUT / "paper_comparison_table.csv")
@@ -239,7 +315,7 @@ Interpret each matched row using three values:
 Do not say our method is better merely because ASR is lower. It is better on a
 row only if ASR falls while ACC and RA remain acceptable.
 
-## Cell 9: Display saved visual evidence
+## Cell 11: Display saved visual evidence
 
 ```python
 from PIL import Image
@@ -256,7 +332,7 @@ Each panel shows the clean image, triggered image, corrected image, magnified
 pixel difference, clean/trigger/corrected spectra, and the correction actually
 applied by the generator.
 
-## Cell 10: Sanity-check every run
+## Cell 12: Sanity-check every run
 
 ```python
 import json
@@ -283,7 +359,7 @@ Expected final count: six `complete` summaries. A `rejected_weak_attack` result
 means the trigger/model configuration must be calibrated before training its
 generator.
 
-## Cell 11: Create manageable downloads
+## Cell 13: Create manageable downloads
 
 ```python
 import shutil
@@ -297,7 +373,7 @@ for dataset_name in ("cifar100", "tinyimagenet"):
     experiment_archive = shutil.make_archive(
         f"/kaggle/working/{dataset_name}_benchmark_checkpoints",
         "zip",
-        root_dir=REPO / "Benchmark_Experiments" / "cifar_tiny_reference_free_v3" / dataset_name,
+        root_dir=REPO / "Benchmark_Experiments" / "cifar_tiny_reference_free_v4" / dataset_name,
     )
     print(output_archive)
     print(experiment_archive)
@@ -311,14 +387,14 @@ checkpoint ZIPs allow us to rerun evaluation without retraining.
 Place the extracted folders at:
 
 ```text
-Benchmark_Outputs/cifar_tiny_reference_free_v3/
-Benchmark_Experiments/cifar_tiny_reference_free_v3/
+Benchmark_Outputs/cifar_tiny_reference_free_v4/
+Benchmark_Experiments/cifar_tiny_reference_free_v4/
 ```
 
 The first files to inspect will be:
 
 ```text
-Benchmark_Outputs/cifar_tiny_reference_free_v3/paper_comparison_table.md
-Benchmark_Outputs/cifar_tiny_reference_free_v3/paper_comparison_table.csv
-Benchmark_Outputs/cifar_tiny_reference_free_v3/<dataset>/<attack>/final_test_summary.json
+Benchmark_Outputs/cifar_tiny_reference_free_v4/paper_comparison_table.md
+Benchmark_Outputs/cifar_tiny_reference_free_v4/paper_comparison_table.csv
+Benchmark_Outputs/cifar_tiny_reference_free_v4/<dataset>/<attack>/final_test_summary.json
 ```

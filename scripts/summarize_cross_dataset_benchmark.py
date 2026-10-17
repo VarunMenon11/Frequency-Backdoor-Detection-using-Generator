@@ -97,7 +97,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-root", type=Path,
-        default=Path("Benchmark_Outputs/cifar_tiny_reference_free_v3"),
+        default=Path("Benchmark_Outputs/cifar_tiny_reference_free_v4"),
     )
     args = parser.parse_args()
     rows = build_comparison_outputs(args.output_root)
