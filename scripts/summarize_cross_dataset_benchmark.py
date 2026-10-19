@@ -34,22 +34,29 @@ def build_comparison_outputs(root: Path) -> list[dict[str, object]]:
             "source": "Zhang et al., IEEE IoT Journal 2026, Table III",
             "status": "published",
         })
-    for path in sorted(root.glob("*/*/final_test_summary.json")):
+    measured: dict[tuple[str, str, str], dict[str, object]] = {}
+    for path in sorted(root.rglob("final_test_summary.json")):
         summary = json.loads(path.read_text(encoding="utf-8"))
         if summary.get("status") != "complete":
             continue
         dataset, attack = summary["dataset"], summary["attack"]
+        profile = summary.get("defense_profile", "balanced")
         for key, method in (
             ("no_defense", "Our suspicious model: no defense"),
-            ("reference_free_defense", "Our reference-free generator"),
+            (
+                "reference_free_defense",
+                f"Our reference-free generator ({profile})",
+            ),
         ):
             values = summary[key]
-            rows.append({
+            row = {
                 "dataset": dataset, "attack": attack, "method": method,
                 "acc": values["clean_accuracy"], "asr": values["asr"],
                 "ra": values["robust_accuracy"], "source": str(path),
                 "status": "measured",
-            })
+            }
+            measured[(dataset, attack, method)] = row
+    rows.extend(measured.values())
 
     with (root / "paper_comparison_table.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))

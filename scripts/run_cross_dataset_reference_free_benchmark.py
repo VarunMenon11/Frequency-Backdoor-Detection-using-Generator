@@ -44,6 +44,22 @@ class GeneratorWeights:
     sparsity: float = 0.05
     smoothness: float = 0.01
 
+    @classmethod
+    def for_profile(cls, profile: str) -> "GeneratorWeights":
+        if profile == "balanced":
+            return cls()
+        if profile == "aggressive":
+            return cls(
+                classification=2.0,
+                image=2.0,
+                spectral=0.5,
+                identity=2.0,
+                clean_consistency=1.0,
+                sparsity=0.02,
+                smoothness=0.01,
+            )
+        raise ValueError(f"Unknown defense profile: {profile}")
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -63,6 +79,14 @@ def parse_args() -> argparse.Namespace:
         default=Path("Benchmark_Outputs/cifar_tiny_reference_free_v4"),
     )
     parser.add_argument("--stage", choices=["all", "classifier", "generator"], default="all")
+    parser.add_argument(
+        "--defense-profile", choices=["balanced", "aggressive"], default="balanced",
+        help=(
+            "Balanced prioritizes clean accuracy. Aggressive gives classification "
+            "recovery more weight and is intended for a separately reported "
+            "low-ASR operating point."
+        ),
+    )
     parser.add_argument("--classifier-epochs", type=int, default=60)
     parser.add_argument("--generator-epochs", type=int, default=12)
     parser.add_argument("--classifier-eval-interval", type=int, default=5)
@@ -127,6 +151,7 @@ def main() -> None:
     print("Attacks:", ", ".join(attacks_to_run), flush=True)
     for dataset_name in datasets_to_run:
         data_root = args.cifar_root if dataset_name == "cifar100" else args.tiny_root
+        print(f"Loading {dataset_name} from {data_root} ...", flush=True)
         bundle = build_benchmark_datasets(
             dataset_name, data_root, seed=args.seed,
             download_cifar=args.download_cifar,
@@ -148,7 +173,12 @@ def main() -> None:
 def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> None:
     experiment_dir = args.experiment_root / dataset_name / attack_name
     output_dir = args.output_root / dataset_name / attack_name
+    defense_experiment_dir = experiment_dir
+    if args.defense_profile != "balanced":
+        defense_experiment_dir = experiment_dir / f"defense_{args.defense_profile}"
+        output_dir = output_dir / f"defense_{args.defense_profile}"
     experiment_dir.mkdir(parents=True, exist_ok=True)
+    defense_experiment_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     final_path = output_dir / "final_test_summary.json"
     if final_path.is_file() and not args.rerun and args.stage == "all":
@@ -186,11 +216,12 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
             else "ImageNet-pretrained ResNet-18 with standard input stem"
         ),
         "generator": "ReferenceFreeSpectralGenerator; one image at inference",
+        "defense_profile": args.defense_profile,
         "checkpoint_selection": "calibration split only; official test held out",
         "seed": args.seed,
         "args": serializable_args(args),
     }
-    write_json(experiment_dir / "run_config.json", run_config)
+    write_json(defense_experiment_dir / "run_config.json", run_config)
     write_json(output_dir / "run_config.json", run_config)
     save_trigger_preview(calibration_pairs, output_dir, attack_name)
     print(
@@ -262,8 +293,8 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
         write_json(final_path, {**run_config, "status": "rejected_weak_attack", **attack_summary})
         return
 
-    generator_path = experiment_dir / "reference_free_generator_best.pt"
-    generator_complete = experiment_dir / "generator_training_complete.json"
+    generator_path = defense_experiment_dir / "reference_free_generator_best.pt"
+    generator_complete = defense_experiment_dir / "generator_training_complete.json"
     generator = ReferenceFreeSpectralGenerator(
         base_channels=args.base_channels,
         max_log_correction=args.max_log_correction,
@@ -281,7 +312,7 @@ def run_one(dataset_name, attack_name, bundle, args, device, amp_enabled) -> Non
     else:
         generator_record = train_generator(
             generator, classifier, bundle.train, calibration_pairs, trigger,
-            generator_path, experiment_dir, args, device, amp_enabled,
+            generator_path, defense_experiment_dir, args, device, amp_enabled,
             calibration_attack["clean_accuracy"], run_config,
         )
 
@@ -495,7 +526,7 @@ def train_generator(
         optimizer, T_max=args.generator_epochs
     )
     scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
-    weights = GeneratorWeights()
+    weights = GeneratorWeights.for_profile(args.defense_profile)
     history_path = experiment_dir / "generator_history.json"
     last_path = experiment_dir / "reference_free_generator_last.pt"
     history, best_key, best_record, start_epoch = [], None, None, 1
@@ -831,6 +862,8 @@ This run used a separate suspicious ResNet-18 and a separate reference-free
 generator. The generator received one image at inference; the official test
 split was not used for checkpoint selection.
 
+**Defense profile:** {summary.get('defense_profile', 'balanced')}
+
 | Pipeline | Clean ACC | Triggered ASR | Robust accuracy |
 |---|---:|---:|---:|
 | No defense | {100*before['clean_accuracy']:.2f}% | {100*before['asr']:.2f}% | {100*before['robust_accuracy']:.2f}% |
@@ -875,6 +908,10 @@ def validate_args(args):
         raise ValueError("generator-data-fraction must be in (0, 1]")
     if args.minimum_clean_accuracy is not None and not 0.0 < args.minimum_clean_accuracy <= 1.0:
         raise ValueError("minimum-clean-accuracy must be in (0, 1]")
+    if not 0.0 <= args.max_clean_accuracy_drop < 1.0:
+        raise ValueError("max-clean-accuracy-drop must be in [0, 1)")
+    if args.max_log_correction <= 0.0:
+        raise ValueError("max-log-correction must be positive")
     if not 0.0 <= args.label_smoothing < 1.0:
         raise ValueError("label-smoothing must be in [0, 1)")
     for name in (

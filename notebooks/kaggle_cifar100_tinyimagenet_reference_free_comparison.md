@@ -44,6 +44,50 @@ installed Kaggle PyTorch build did not support that GPU's `sm_60` kernels.
 
 The comparison is therefore **protocol-aligned**, not an exact reproduction.
 
+Two defense operating points are reported, following the same presentation
+idea as the paper without reusing its parameter name:
+
+- **balanced:** permits at most a 5 percentage-point clean-accuracy drop and
+  is the primary utility-preserving result;
+- **aggressive:** gives attack removal more weight and permits at most a
+  20 percentage-point clean-accuracy drop. It is saved separately and never
+  overwrites the balanced model.
+
+These are called `balanced` and `aggressive`, not $\beta=0.1$ and $\beta=1$,
+because our generator and Freq-Pret use different mechanisms. A result is
+reported exactly as measured; no run is tuned merely to reproduce a published
+number.
+
+## Recommended run order
+
+Do not launch a comma-separated multi-attack command. Run one cell, wait for
+it to finish, and download/check its output before starting the next one.
+
+1. Keep the three completed CIFAR-100 balanced results.
+2. Run Cells **10A**, **10B**, and optionally **10C**, one at a time, to add
+   aggressive CIFAR-100 results without retraining the classifiers.
+3. Run Cell **11** as the Tiny ImageNet SIG classifier pilot.
+4. Run Cells **12** and **12A** for Tiny ImageNet SIG.
+5. Run Cells **13** and **13A** for Tiny ImageNet Blended.
+6. Run Cells **14** and **14A** only as the additional FTrojan test.
+7. Run Cells **16--19** to build the final table, inspect evidence, validate
+   every result, and create downloads.
+
+SIG and Blended are the priority comparison rows because those attack families
+appear in the cited table. FTrojan demonstrates the frequency-specific scope
+of this project, but it must not be presented as a direct Freq-Pret row.
+
+## Training-budget boundary
+
+The cited Freq-Pret paper trained the CIFAR-100 and ImageNet-subset attack
+models for `200` epochs and used `10` defense retraining epochs in its main
+comparison. Our benchmark uses an ImageNet-pretrained ResNet-18 for `60`
+CIFAR-100 epochs and `40` Tiny ImageNet epochs, followed by a generator trained
+on only `2%` clean data. The balanced generator uses `12` epochs; the optional
+aggressive generator uses `30` epochs on CIFAR-100 and `20` on Tiny ImageNet.
+Therefore, the final table is a same-dataset, same-attack-family comparison,
+not a claim of exact experimental reproduction.
+
 ## Cell 1: Find the repository
 
 ```python
@@ -216,7 +260,7 @@ The final log must show an accepted classifier with clean accuracy of at least
 `0.68`. If it does not, stop and inspect the history instead of training the
 generator. When it passes, continue below; the saved SIG classifier is reused.
 
-## Cell 7: Run the full CIFAR-100 benchmark
+## Cell 7: Run CIFAR-100 SIG
 
 The uploaded CIFAR-100 files are used directly. Internet is needed only if the
 ImageNet ResNet-18 weights are not already cached.
@@ -224,10 +268,10 @@ ImageNet ResNet-18 weights are not already cached.
 ```python
 import subprocess, sys
 
-cifar_command = [
+cifar_sig_command = [
     sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
     "--datasets", "cifar100",
-    "--attacks", "sig,blended,ftrojan",
+    "--attacks", "sig",
     "--cifar-root", str(CIFAR_ROOT),
     "--classifier-epochs", "60",
     "--generator-epochs", "12",
@@ -239,70 +283,176 @@ cifar_command = [
     "--num-workers", "2",
     "--device", "cuda",
 ]
-subprocess.run(cifar_command, cwd=REPO, check=True)
+subprocess.run(cifar_sig_command, cwd=REPO, check=True)
 ```
 
-## Cell 8: Recover only a rejected CIFAR generator
-
-Run this cell only when the full CIFAR command reports `No generator epoch
-satisfied the clean-accuracy constraint`. It preserves every completed
-classifier, detects the unfinished attack, and restarts only that generator
-with the clean-preserving loss. After this cell succeeds, rerun Cell 7 so the
-benchmark can skip completed work and continue to the next attack.
+## Cell 8: Run CIFAR-100 Blended
 
 ```python
 import subprocess, sys
-import json
-from pathlib import Path
 
-experiment_root = REPO / "Benchmark_Experiments" / "cifar_tiny_reference_free_v4"
-unfinished_attacks = []
-for attack_name in ("sig", "blended", "ftrojan"):
-    run_dir = experiment_root / "cifar100" / attack_name
-    if (
-        (run_dir / "classifier_training_complete.json").is_file()
-        and not (run_dir / "generator_training_complete.json").is_file()
-    ):
-        unfinished_attacks.append(attack_name)
-
-print("Generators requiring a clean restart:", unfinished_attacks)
-for attack_name in unfinished_attacks:
-    history_path = experiment_root / "cifar100" / attack_name / "generator_history.json"
-    if history_path.is_file():
-        print(f"\nPrevious {attack_name} generator checkpoints:")
-        for record in json.loads(history_path.read_text()):
-            validation = record["validation"]
-            print(
-                f"  epoch {record['epoch']:02d}: "
-                f"ACC={validation['clean_accuracy']:.4f}, "
-                f"ASR={validation['asr']:.4f}, "
-                f"RA={validation['robust_accuracy']:.4f}"
-            )
-    recovery_command = [
-        sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
-        "--datasets", "cifar100",
-        "--attacks", attack_name,
-        "--stage", "generator",
-        "--rerun-generator",
-        "--cifar-root", str(CIFAR_ROOT),
-        "--classifier-epochs", "60",
-        "--generator-epochs", "12",
-        "--generator-data-fraction", "0.02",
-        "--max-log-correction", "0.75",
-        "--minimum-clean-accuracy", "0.68",
-        "--classifier-batch-size", "256",
-        "--generator-batch-size", "64",
-        "--num-workers", "2",
-        "--device", "cuda",
-    ]
-    subprocess.run(recovery_command, cwd=REPO, check=True)
+cifar_blended_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "cifar100",
+    "--attacks", "blended",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--classifier-epochs", "60",
+    "--generator-epochs", "12",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
+    "--minimum-clean-accuracy", "0.68",
+    "--classifier-batch-size", "256",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(cifar_blended_command, cwd=REPO, check=True)
 ```
 
-## Cell 9: Validate the Tiny ImageNet classifier first
+## Cell 9: Run CIFAR-100 FTrojan
+
+```python
+import subprocess, sys
+
+cifar_ftrojan_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "cifar100",
+    "--attacks", "ftrojan",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--classifier-epochs", "60",
+    "--generator-epochs", "12",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
+    "--minimum-clean-accuracy", "0.68",
+    "--classifier-batch-size", "256",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(cifar_ftrojan_command, cwd=REPO, check=True)
+```
+
+## Cell 10: Recover one rejected CIFAR generator
+
+Run this cell only when the full CIFAR command reports `No generator epoch
+satisfied the clean-accuracy constraint`. It preserves every completed
+classifier and restarts only the named generator with the clean-preserving
+loss. Set `ATTACK_TO_RECOVER` to the attack reported by the failed cell.
+
+```python
+import subprocess, sys
+ATTACK_TO_RECOVER = "sig"  # change to "blended" or "ftrojan" when required
+recovery_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "cifar100",
+    "--attacks", ATTACK_TO_RECOVER,
+    "--stage", "generator",
+    "--rerun-generator",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--classifier-epochs", "60",
+    "--generator-epochs", "12",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
+    "--minimum-clean-accuracy", "0.68",
+    "--classifier-batch-size", "256",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(recovery_command, cwd=REPO, check=True)
+```
+
+## Cell 10A: Train CIFAR-100 SIG aggressive defense
+
+Your completed SIG classifier and balanced generator are reused and preserved.
+Only a second generator is trained. Run this cell independently.
+
+```python
+import subprocess, sys
+
+cifar_sig_aggressive_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "cifar100",
+    "--attacks", "sig",
+    "--stage", "generator",
+    "--defense-profile", "aggressive",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--generator-epochs", "30",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "1.50",
+    "--max-clean-accuracy-drop", "0.20",
+    "--minimum-clean-accuracy", "0.68",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(cifar_sig_aggressive_command, cwd=REPO, check=True)
+```
+
+## Cell 10B: Train CIFAR-100 Blended aggressive defense
+
+Run this only after the Blended classifier has completed.
+
+```python
+import subprocess, sys
+
+cifar_blended_aggressive_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "cifar100",
+    "--attacks", "blended",
+    "--stage", "generator",
+    "--defense-profile", "aggressive",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--generator-epochs", "30",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "1.50",
+    "--max-clean-accuracy-drop", "0.20",
+    "--minimum-clean-accuracy", "0.68",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(cifar_blended_aggressive_command, cwd=REPO, check=True)
+```
+
+## Cell 10C: Train CIFAR-100 FTrojan aggressive defense
+
+FTrojan is an additional frequency-domain stress test and has no matching row
+in the cited Freq-Pret table. Run it separately from SIG and Blended.
+
+```python
+import subprocess, sys
+
+cifar_ftrojan_aggressive_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "cifar100",
+    "--attacks", "ftrojan",
+    "--stage", "generator",
+    "--defense-profile", "aggressive",
+    "--cifar-root", str(CIFAR_ROOT),
+    "--generator-epochs", "30",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "1.50",
+    "--max-clean-accuracy-drop", "0.20",
+    "--minimum-clean-accuracy", "0.68",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(cifar_ftrojan_aggressive_command, cwd=REPO, check=True)
+```
+
+## Cell 11: Validate the Tiny ImageNet classifier first
 
 This pilot uses only SIG and stops before generator training. It verifies the
 faster standard-stem model and the `45%` clean-accuracy gate before the complete
 Tiny ImageNet benchmark is started.
+
+The updated loader directly indexes the official `500` training images in each
+of the `200` class folders. Consequently, it no longer performs a recursive
+100,000-file search before training. If the Kaggle copy has been reorganized,
+the loader automatically falls back to `ImageFolder` and startup can take
+longer.
 
 ```python
 import subprocess, sys
@@ -325,13 +475,15 @@ subprocess.run(tiny_pilot_command, cwd=REPO, check=True)
 Continue only after the selected checkpoint reaches the required clean
 accuracy and attack thresholds. The full run below reuses this checkpoint.
 
-## Cell 10: Run the full Tiny ImageNet benchmark
+## Cell 12: Run Tiny ImageNet SIG
 
 ```python
-tiny_command = [
+import subprocess, sys
+
+tiny_sig_command = [
     sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
     "--datasets", "tinyimagenet",
-    "--attacks", "sig,blended,ftrojan",
+    "--attacks", "sig",
     "--tiny-root", str(TINY_ROOT),
     "--classifier-epochs", "40",
     "--generator-epochs", "12",
@@ -343,15 +495,165 @@ tiny_command = [
     "--num-workers", "2",
     "--device", "cuda",
 ]
-subprocess.run(tiny_command, cwd=REPO, check=True)
+subprocess.run(tiny_sig_command, cwd=REPO, check=True)
 ```
 
-If Kaggle stops before all six runs finish, rerun Cells 7 and 10. Completed
-dataset/attack pairs are skipped automatically, and saved classifier
-checkpoints are reused when generator training is unfinished. Do not add
+## Cell 12A: Train Tiny ImageNet SIG aggressive defense
+
+Run this after Cell 12. It loads the SIG classifier and trains only the
+separately stored aggressive generator.
+
+```python
+import subprocess, sys
+
+tiny_sig_aggressive_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "tinyimagenet",
+    "--attacks", "sig",
+    "--stage", "generator",
+    "--defense-profile", "aggressive",
+    "--tiny-root", str(TINY_ROOT),
+    "--generator-epochs", "20",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "1.50",
+    "--max-clean-accuracy-drop", "0.20",
+    "--minimum-clean-accuracy", "0.45",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(tiny_sig_aggressive_command, cwd=REPO, check=True)
+```
+
+## Cell 13: Run Tiny ImageNet Blended
+
+```python
+import subprocess, sys
+
+tiny_blended_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "tinyimagenet",
+    "--attacks", "blended",
+    "--tiny-root", str(TINY_ROOT),
+    "--classifier-epochs", "40",
+    "--generator-epochs", "12",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
+    "--minimum-clean-accuracy", "0.45",
+    "--classifier-batch-size", "256",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(tiny_blended_command, cwd=REPO, check=True)
+```
+
+## Cell 13A: Train Tiny ImageNet Blended aggressive defense
+
+```python
+import subprocess, sys
+
+tiny_blended_aggressive_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "tinyimagenet",
+    "--attacks", "blended",
+    "--stage", "generator",
+    "--defense-profile", "aggressive",
+    "--tiny-root", str(TINY_ROOT),
+    "--generator-epochs", "20",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "1.50",
+    "--max-clean-accuracy-drop", "0.20",
+    "--minimum-clean-accuracy", "0.45",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(tiny_blended_aggressive_command, cwd=REPO, check=True)
+```
+
+## Cell 14: Run Tiny ImageNet FTrojan
+
+```python
+import subprocess, sys
+
+tiny_ftrojan_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "tinyimagenet",
+    "--attacks", "ftrojan",
+    "--tiny-root", str(TINY_ROOT),
+    "--classifier-epochs", "40",
+    "--generator-epochs", "12",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
+    "--minimum-clean-accuracy", "0.45",
+    "--classifier-batch-size", "256",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(tiny_ftrojan_command, cwd=REPO, check=True)
+```
+
+## Cell 14A: Train Tiny ImageNet FTrojan aggressive defense
+
+```python
+import subprocess, sys
+
+tiny_ftrojan_aggressive_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "tinyimagenet",
+    "--attacks", "ftrojan",
+    "--stage", "generator",
+    "--defense-profile", "aggressive",
+    "--tiny-root", str(TINY_ROOT),
+    "--generator-epochs", "20",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "1.50",
+    "--max-clean-accuracy-drop", "0.20",
+    "--minimum-clean-accuracy", "0.45",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(tiny_ftrojan_aggressive_command, cwd=REPO, check=True)
+```
+
+Run one attack cell at a time. Completed cells are skipped automatically on
+rerun, and unfinished training resumes from its last epoch. Do not add
 `--rerun` unless you deliberately want to replace completed results.
 
-## Cell 11: Display the paper table
+## Cell 15: Recover one rejected Tiny ImageNet generator
+
+Run this only if one Tiny ImageNet attack reports that no generator epoch met
+the clean-accuracy constraint. Set the attack name explicitly; its completed
+classifier will be reused.
+
+```python
+import subprocess, sys
+
+TINY_ATTACK_TO_RECOVER = "sig"  # change to "blended" or "ftrojan" when required
+tiny_recovery_command = [
+    sys.executable, "-m", "scripts.run_cross_dataset_reference_free_benchmark",
+    "--datasets", "tinyimagenet",
+    "--attacks", TINY_ATTACK_TO_RECOVER,
+    "--stage", "generator",
+    "--rerun-generator",
+    "--tiny-root", str(TINY_ROOT),
+    "--classifier-epochs", "40",
+    "--generator-epochs", "12",
+    "--generator-data-fraction", "0.02",
+    "--max-log-correction", "0.75",
+    "--minimum-clean-accuracy", "0.45",
+    "--classifier-batch-size", "256",
+    "--generator-batch-size", "64",
+    "--num-workers", "2",
+    "--device", "cuda",
+]
+subprocess.run(tiny_recovery_command, cwd=REPO, check=True)
+```
+
+## Cell 16: Display the paper table
 
 ```python
 import pandas as pd
@@ -373,13 +675,13 @@ Interpret each matched row using three values:
 Do not say our method is better merely because ASR is lower. It is better on a
 row only if ASR falls while ACC and RA remain acceptable.
 
-## Cell 12: Display saved visual evidence
+## Cell 17: Display saved visual evidence
 
 ```python
 from PIL import Image
 from IPython.display import display
 
-panels = sorted(OUTPUT.glob("*/*/evidence_panel_*.png"))
+panels = sorted(OUTPUT.rglob("evidence_panel_*.png"))
 print("Evidence panels:", len(panels))
 for panel in panels[:12]:
     print(panel.relative_to(OUTPUT))
@@ -390,12 +692,12 @@ Each panel shows the clean image, triggered image, corrected image, magnified
 pixel difference, clean/trigger/corrected spectra, and the correction actually
 applied by the generator.
 
-## Cell 13: Sanity-check every run
+## Cell 18: Sanity-check every run
 
 ```python
 import json
 
-for summary_path in sorted(OUTPUT.glob("*/*/final_test_summary.json")):
+for summary_path in sorted(OUTPUT.rglob("final_test_summary.json")):
     summary = json.loads(summary_path.read_text())
     print("\n", summary_path.relative_to(OUTPUT), "status:", summary["status"])
     if summary["status"] == "complete":
@@ -413,11 +715,12 @@ for summary_path in sorted(OUTPUT.glob("*/*/final_test_summary.json")):
         print("  The attack was rejected as weak; do not report it as defense success.")
 ```
 
-Expected final count: six `complete` summaries. A `rejected_weak_attack` result
-means the trigger/model configuration must be calibrated before training its
-generator.
+Expected final count is six balanced summaries and, if every optional
+aggressive cell is run, six additional aggressive summaries. A
+`rejected_weak_attack` result means the trigger/model configuration must be
+calibrated before training its generator.
 
-## Cell 14: Create manageable downloads
+## Cell 19: Create manageable downloads
 
 ```python
 import shutil

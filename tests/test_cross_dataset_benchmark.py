@@ -12,6 +12,7 @@ from datasets.cross_dataset_benchmark import (
     IndexedTransformDataset,
     PairedTriggerDataset,
     PoisonedTrainingDataset,
+    TinyImageNetTraining,
     TinyImageNetValidation,
     find_tiny_imagenet_root,
     stratified_split,
@@ -84,12 +85,31 @@ class CrossDatasetBenchmarkTests(unittest.TestCase):
             val_class.mkdir(parents=True)
             Image.new("RGB", (64, 64), "red").save(val_class / "sample.JPEG")
 
+            self.assertEqual(find_tiny_imagenet_root(root), root)
             located = find_tiny_imagenet_root(Path(directory))
             validation = TinyImageNetValidation(located, {"n00000001": 0})
 
             self.assertEqual(located, root)
             self.assertEqual(len(validation), 1)
             image, label = validation[0]
+            self.assertEqual(image.size, (64, 64))
+            self.assertEqual(label, 0)
+
+    def test_tiny_imagenet_fast_train_index_uses_official_names(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "tiny-imagenet-200"
+            image_root = root / "train" / "n00000001" / "images"
+            image_root.mkdir(parents=True)
+            for index in (0, 499):
+                Image.new("RGB", (64, 64), "blue").save(
+                    image_root / f"n00000001_{index}.JPEG"
+                )
+
+            training = TinyImageNetTraining(root)
+
+            self.assertEqual(training.classes, ["n00000001"])
+            self.assertEqual(len(training), 500)
+            image, label = training[0]
             self.assertEqual(image.size, (64, 64))
             self.assertEqual(label, 0)
 

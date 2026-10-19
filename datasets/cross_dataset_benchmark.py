@@ -78,6 +78,50 @@ class TinyImageNetValidation(Dataset):
             return image.convert("RGB").copy(), label
 
 
+class TinyImageNetTraining(Dataset):
+    """Load the official Tiny ImageNet train layout without a 100k-file scan."""
+
+    def __init__(self, root: Path):
+        train_root = root / "train"
+        classes = sorted(path.name for path in train_root.iterdir() if path.is_dir())
+        if not classes:
+            raise RuntimeError(f"Tiny ImageNet has no class folders under {train_root}")
+
+        standard_layout = all(
+            (train_root / wnid / "images" / f"{wnid}_0.JPEG").is_file()
+            and (train_root / wnid / "images" / f"{wnid}_499.JPEG").is_file()
+            for wnid in classes
+        )
+        if standard_layout:
+            self.classes = classes
+            self.class_to_idx = {
+                wnid: index for index, wnid in enumerate(self.classes)
+            }
+            self.samples = [
+                (
+                    train_root / wnid / "images" / f"{wnid}_{image_index}.JPEG",
+                    self.class_to_idx[wnid],
+                )
+                for wnid in self.classes
+                for image_index in range(500)
+            ]
+        else:
+            # Compatibility path for nonstandard Kaggle reorganizations.
+            organized = datasets.ImageFolder(str(train_root), transform=None)
+            self.classes = list(organized.classes)
+            self.class_to_idx = dict(organized.class_to_idx)
+            self.samples = [(Path(path), label) for path, label in organized.samples]
+        self.targets = [label for _, label in self.samples]
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int):
+        path, label = self.samples[index]
+        with Image.open(path) as image:
+            return image.convert("RGB").copy(), label
+
+
 class PoisonedTrainingDataset(Dataset):
     """Replace a deterministic fraction of non-target rows with poisoned rows."""
 
@@ -153,7 +197,7 @@ def build_benchmark_datasets(
         native_size = 32
     elif name == "tinyimagenet":
         root = find_tiny_imagenet_root(data_root)
-        source_train = datasets.ImageFolder(str(root / "train"), transform=None)
+        source_train = TinyImageNetTraining(root)
         source_test = TinyImageNetValidation(root, source_train.class_to_idx)
         class_names = _tiny_label_names(root, source_train.classes)
         native_size = 64
@@ -237,12 +281,14 @@ def stratified_subset(dataset: Dataset, fraction: float, seed: int) -> Subset:
 
 def find_tiny_imagenet_root(path: Path) -> Path:
     path = path.expanduser()
-    candidates = [path, path / "tiny-imagenet-200"]
-    if path.exists():
-        candidates.extend(candidate for candidate in path.rglob("tiny-imagenet-200"))
-    for candidate in candidates:
+    direct_candidates = [path, path / "tiny-imagenet-200"]
+    for candidate in direct_candidates:
         if _has_tiny_imagenet_layout(candidate):
             return candidate
+    if path.exists():
+        for candidate in path.rglob("tiny-imagenet-200"):
+            if _has_tiny_imagenet_layout(candidate):
+                return candidate
     raise FileNotFoundError(
         "Could not locate Tiny ImageNet. Pass the directory containing "
         "tiny-imagenet-200 or the tiny-imagenet-200 directory itself."
